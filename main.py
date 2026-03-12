@@ -1,8 +1,8 @@
 """
 AI Signal Portfolio Construction System
-main.py - 전체 파이프라인 실행 및 시각화
+main.py - 전체 파이프라인 실행 및 시각화 + CSV 내보내기 + GitHub 자동 배포
 
-실행: python main.py --data_path ./data/RL_Universe_Data.xlsx --output_dir ./outputs/
+실행: python main.py --data_path ./data/ai_signal_data.xlsx --output_dir ./outputs/
 """
 
 import argparse
@@ -20,6 +20,21 @@ from src.data_loader import UniverseData
 from src.feature_engine import build_all_features
 from src.backtest import run_backtest, BacktestResult
 from src.attribution import run_attribution, explain_period
+
+from export_csv import (
+    export_daily_performance,
+    export_portfolio_weights,
+    export_benchmark_weights,
+    export_feature_importance,
+    export_group_attribution,
+    export_li_attribution,
+    export_ic_series,
+    export_model_structure,
+    export_monthly_regime,
+    export_style_sector_tilt,
+    export_monthly_ow_explanations,
+    git_push_outputs,
+)
 
 warnings.filterwarnings("ignore")
 
@@ -414,8 +429,40 @@ def main():
     print("  [10/10] 재훈련 전후 상관")
 
     print(f"\n모든 차트가 {output_dir}에 저장되었습니다.")
+
+    # Phase 9: CSV 내보내기 + GitHub 자동 배포
+    print("\n" + "=" * 60)
+    print("Phase 9: 대시보드 CSV 내보내기")
     print("=" * 60)
-    print("완료!")
+
+    csv_dir = output_dir / "csv"
+    csv_dir.mkdir(parents=True, exist_ok=True)
+    report_dir = output_dir / "reports"
+    report_dir.mkdir(parents=True, exist_ok=True)
+
+    export_daily_performance(result, csv_dir)
+    export_portfolio_weights(result, csv_dir)
+    export_benchmark_weights(result, data, csv_dir)
+    export_feature_importance(attribution, feature_groups, csv_dir)
+    export_group_attribution(attribution, csv_dir)
+    export_li_attribution(attribution, csv_dir)
+    export_ic_series(result, csv_dir)
+    export_model_structure(result, csv_dir)
+    export_monthly_regime(result, data, csv_dir)
+    export_style_sector_tilt(result, data, csv_dir)
+    export_monthly_ow_explanations(result, data, attribution, feature_groups, report_dir)
+
+    print(f"\nCSVs → {csv_dir.resolve()}")
+    print(f"Reports → {report_dir.resolve()}")
+
+    # Phase 10: GitHub 자동 배포
+    print("\n" + "=" * 60)
+    print("Phase 10: GitHub 자동 배포")
+    print("=" * 60)
+    git_push_outputs()
+
+    print("\n" + "=" * 60)
+    print("전체 파이프라인 완료!")
     print("=" * 60)
 
 
