@@ -16,9 +16,11 @@ import warnings
 warnings.filterwarnings("ignore")
 
 import gc
+import subprocess
 import pandas as pd
 import numpy as np
 from pathlib import Path
+from datetime import datetime
 from scipy.stats import spearmanr
 
 from src.data_loader import UniverseData, TICKERS
@@ -634,6 +636,61 @@ def export_monthly_ow_explanations(
     print(f"  [11] lightgbm_monthly_ow_explanations.csv ({len(df)} months) → {report_dir}")
 
 
+def git_push_outputs():
+    """CSV/Report 파일을 자동으로 GitHub에 commit & push."""
+    project_root = Path(__file__).resolve().parent
+
+    # git repo 확인
+    git_dir = project_root / ".git"
+    if not git_dir.exists():
+        print("\n[Git] .git 폴더가 없습니다. 스킵합니다.")
+        return False
+
+    try:
+        def run_git(*args):
+            result = subprocess.run(
+                ["git"] + list(args),
+                cwd=str(project_root),
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            return result
+
+        # 1) Stage outputs
+        run_git("add", "outputs/csv/", "outputs/reports/")
+
+        # 2) 변경 사항이 있는지 확인
+        status = run_git("diff", "--cached", "--stat")
+        if not status.stdout.strip():
+            print("\n[Git] CSV 변경사항 없음. 스킵합니다.")
+            return True
+
+        # 3) Commit
+        now = datetime.now().strftime("%Y-%m-%d %H:%M")
+        commit_msg = f"Update dashboard CSVs ({now})"
+        commit_result = run_git("commit", "-m", commit_msg)
+        if commit_result.returncode != 0:
+            print(f"\n[Git] commit 실패: {commit_result.stderr}")
+            return False
+        print(f"\n[Git] Committed: {commit_msg}")
+
+        # 4) Push
+        push_result = run_git("push", "origin", "HEAD")
+        if push_result.returncode != 0:
+            print(f"[Git] push 실패: {push_result.stderr}")
+            return False
+        print("[Git] Pushed to GitHub successfully!")
+        return True
+
+    except subprocess.TimeoutExpired:
+        print("\n[Git] 타임아웃. 수동으로 push 해주세요.")
+        return False
+    except Exception as e:
+        print(f"\n[Git] 에러: {e}")
+        return False
+
+
 def main():
     print("=" * 60)
     print("CSV Export Pipeline")
@@ -687,6 +744,11 @@ def main():
 
     print(f"\nAll CSVs saved to {csv_dir.resolve()}")
     print(f"Reports saved to {report_dir.resolve()}")
+    print("=" * 60)
+
+    # Auto-push to GitHub
+    print("\n[Auto-Deploy] GitHub에 CSV 업데이트 push 중...")
+    git_push_outputs()
     print("=" * 60)
 
 
