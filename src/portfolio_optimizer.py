@@ -3,11 +3,10 @@ Phase 6: 포트폴리오 최적화
 cvxpy Mean-Variance Optimization.
 
 목적함수: Maximize(E[r] @ w - lambda * risk - tc * turnover)
-- risk_aversion=1.0, turnover_penalty=0.005
 - risk = quad_form(w - bm_weights, cov_matrix)
 - turnover = norm1(w - prev_weights)
 
-제약: sum(w)=1, w>=0, w<=0.15, 섹터 +-10% vs EW benchmark
+제약: sum(w)=1, w>=0, TE<=5%(ann), 섹터 +-10% vs BM
 Cov matrix: 126일 Ledoit-Wolf shrinkage
 """
 
@@ -19,7 +18,7 @@ from typing import Optional, Dict, List
 
 RISK_AVERSION = 1.8       # Round 4 원래 설정
 TURNOVER_PENALTY = 1.0    # Round 4 원래 설정
-MAX_WEIGHT = 0.10
+MAX_TE_ANNUAL = 0.05      # 연율화 TE 상한 5%
 MAX_SINGLE_TURNOVER = 0.10  # Round 4 원래 설정
 SECTOR_DEVIATION = 0.10
 COV_LOOKBACK = 126
@@ -63,20 +62,20 @@ def optimize_portfolio(
     bm_weights: Optional[np.ndarray] = None,
     risk_aversion: float = RISK_AVERSION,
     turnover_penalty: float = TURNOVER_PENALTY,
-    max_weight: float = MAX_WEIGHT,
+    max_te_annual: float = MAX_TE_ANNUAL,
     sector_deviation: float = SECTOR_DEVIATION,
 ) -> np.ndarray:
     """
-    MVO 포트폴리오 최적화.
+    MVO 포트폴리오 최적화 (TE 제약).
 
     Args:
         expected_returns: 종목별 기대수익률 (Z-score)
-        cov_matrix: 공분산 행렬
-        prev_weights: 이전 비중 (없으면 EW)
+        cov_matrix: 공분산 행렬 (일간)
+        prev_weights: 이전 비중 (없으면 BM)
         sector_map: {ticker: sector}
         risk_aversion: 위험회피계수
         turnover_penalty: 회전율 페널티
-        max_weight: 종목별 최대 비중
+        max_te_annual: 연율화 TE 상한 (기본 5%)
         sector_deviation: 섹터 편차 허용 범위
 
     Returns:
@@ -108,12 +107,16 @@ def optimize_portfolio(
     # 목적함수
     objective = cp.Maximize(ret - risk_aversion * risk - turnover_penalty * turnover)
 
+    # TE 제약: (w-bm)' Σ (w-bm) * 252 <= max_te^2
+    # → daily variance <= max_te^2 / 252
+    max_daily_te_var = max_te_annual ** 2 / 252.0
+
     # 제약
     constraints = [
         cp.sum(w) == 1,
         w >= 0,
-        w <= max_weight,
-        turnover <= MAX_SINGLE_TURNOVER,  # 1회 리밸런싱 턴오버 하드캡
+        risk <= max_daily_te_var,              # TE ≤ 5% (연율화) 하드 제약
+        turnover <= MAX_SINGLE_TURNOVER,       # 1회 리밸런싱 턴오버 하드캡
     ]
 
     # 섹터 제약
