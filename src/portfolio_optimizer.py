@@ -18,7 +18,7 @@ from typing import Optional, Dict, List
 
 RISK_AVERSION = 1.8       # Round 4 원래 설정
 TURNOVER_PENALTY = 1.0    # Round 4 원래 설정
-MAX_TE_ANNUAL = 0.05      # 연율화 TE 상한 5%
+MAX_TE_ANNUAL = 0.10      # 연율화 TE 상한 10%
 MAX_SINGLE_TURNOVER = 0.10  # Round 4 원래 설정
 SECTOR_DEVIATION = 0.10
 COV_LOOKBACK = 126
