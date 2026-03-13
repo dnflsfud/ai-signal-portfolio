@@ -16,11 +16,11 @@ import cvxpy as cp
 from sklearn.covariance import LedoitWolf
 from typing import Optional, Dict, List
 
-RISK_AVERSION = 0.5       # Grid Search 최적 (AR 최대화, TE≤15%)
-TURNOVER_PENALTY = 0.05   # Grid Search 최적 (낮은 페널티 → 시그널 반응성 ↑)
-MAX_TE_ANNUAL = 0.15      # 연율화 TE 상한 15%
-MAX_SINGLE_TURNOVER = 0.15  # Grid Search 최적
-SECTOR_DEVIATION = 0.20   # Grid Search 최적 (섹터 자유도 ↑)
+RISK_AVERSION = 0.5       # Grid Search 최적
+TURNOVER_PENALTY = 0.05   # Grid Search 최적
+MAX_TE_ANNUAL = 0.025     # 연율화 TE 상한 2.5%
+MAX_SINGLE_TURNOVER = 0.15
+SECTOR_DEVIATION = 0.20
 COV_LOOKBACK = 126
 
 

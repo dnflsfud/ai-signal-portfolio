@@ -17,6 +17,7 @@ from src.model_trainer import walk_forward_train, TRAIN_WINDOW
 from src.portfolio_optimizer import optimize_portfolio, estimate_covariance
 
 REBALANCE_FREQ = 10  # 격주 리밸런싱
+ONE_WAY_TC = 0.0010  # 편도 거래비용 10bps (대형주 기준)
 
 
 class BacktestResult:
@@ -82,6 +83,9 @@ class BacktestResult:
         # IC
         avg_ic = self.ic_series.mean() if len(self.ic_series) > 0 else 0
 
+        # 연간 거래비용
+        annual_tc = avg_turnover * ONE_WAY_TC
+
         return {
             "annual_return": ann_ret,
             "annual_vol": ann_vol,
@@ -92,6 +96,7 @@ class BacktestResult:
             "max_drawdown": max_dd,
             "avg_annual_turnover": avg_turnover,
             "avg_ic": avg_ic,
+            "annual_tc": annual_tc,
         }
 
     def summary(self) -> str:
@@ -108,6 +113,7 @@ class BacktestResult:
             f"  Information Ratio:{m['information_ratio']:.2f}",
             f"  Max Drawdown:     {m['max_drawdown']:.2%}",
             f"  연간 Turnover:    {m['avg_annual_turnover']:.0%}",
+            f"  연간 거래비용:    {m['annual_tc']:.2%} (편도 {ONE_WAY_TC*10000:.0f}bps)",
             f"  평균 IC:          {m['avg_ic']:.4f}",
             "=" * 50,
         ]
@@ -228,6 +234,11 @@ def run_backtest(
             daily_ret = np.nan_to_num(daily_ret, 0)
 
         port_ret = np.dot(prev_weights, daily_ret)
+
+        # 거래비용 차감 (리밸런싱 당일)
+        if turnovers and turnovers[-1][0] == t_date:
+            tc_cost = turnovers[-1][1] * ONE_WAY_TC
+            port_ret -= tc_cost
         # 시가총액 가중 벤치마크
         mc_row = mktcap.loc[t_date, tickers]
         mc_sum = mc_row.sum()
