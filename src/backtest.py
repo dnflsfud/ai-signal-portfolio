@@ -193,25 +193,27 @@ def run_backtest(
         return result
 
     start_idx = all_dates.get_loc(pred_valid.index[0])
-    last_rebal_idx = start_idx - rebalance_freq  # 첫 루프에서 리밸런싱
+
+    first_rebal = True
 
     for t_idx in range(start_idx, len(all_dates)):
         t_date = all_dates[t_idx]
 
-        # 리밸런싱 시점인지 확인
-        if t_idx - last_rebal_idx >= rebalance_freq:
+        # 리밸런싱 시점: 10일(격주) 간격
+        is_rebal = ((t_idx - start_idx) % rebalance_freq == 0) or first_rebal
+        if is_rebal:
             pred_row = predictions.loc[t_date, tickers]
 
             if pred_row.notna().sum() >= 10:
-                # 공분산 추정
-                hist_start = max(0, t_idx - 126)
-                hist_returns = returns[tickers].iloc[hist_start:t_idx]
-                cov_matrix = estimate_covariance(hist_returns)
-
-                # 시가총액 벤치마크 가중치
+                # 시가총액 가중(MCW) 벤치마크
                 mc_row = mktcap.loc[t_date, tickers]
                 mc_sum = mc_row.sum()
                 bm_w = (mc_row / mc_sum).values if mc_sum > 0 else np.ones(n_tickers) / n_tickers
+
+                # 공분산 추정 (mega-cap 변동성 조정 포함)
+                hist_start = max(0, t_idx - 126)
+                hist_returns = returns[tickers].iloc[hist_start:t_idx]
+                cov_matrix = estimate_covariance(hist_returns, bm_weights=bm_w)
 
                 # 최적화
                 new_weights = optimize_portfolio(
@@ -226,7 +228,7 @@ def run_backtest(
                 turnovers.append((t_date, turnover))
                 weight_history[t_date] = pd.Series(new_weights, index=tickers)
                 prev_weights = new_weights
-                last_rebal_idx = t_idx
+                first_rebal = False
 
         # 일간 수익률
         daily_ret = returns.loc[t_date, tickers].values
@@ -239,17 +241,17 @@ def run_backtest(
         if turnovers and turnovers[-1][0] == t_date:
             tc_cost = turnovers[-1][1] * ONE_WAY_TC
             port_ret -= tc_cost
-        # 시가총액 가중 벤치마크
-        mc_row = mktcap.loc[t_date, tickers]
-        mc_sum = mc_row.sum()
-        bm_w = (mc_row / mc_sum).values if mc_sum > 0 else np.ones(n_tickers) / n_tickers
-        bm_ret = np.dot(bm_w, daily_ret)
+        # 시가총액 가중(MCW) 벤치마크
+        mc_row_daily = mktcap.loc[t_date, tickers]
+        mc_sum_daily = mc_row_daily.sum()
+        bm_w_daily = (mc_row_daily / mc_sum_daily).values if mc_sum_daily > 0 else np.ones(n_tickers) / n_tickers
+        bm_ret = np.dot(bm_w_daily, daily_ret)
 
         port_rets.append((t_date, port_ret))
         bm_rets.append((t_date, bm_ret))
 
         # IC 계산 (리밸런싱 시점): 예측 vs 실현 specific return
-        if t_idx - last_rebal_idx == 0:
+        if turnovers and turnovers[-1][0] == t_date:
             pred_row = predictions.loc[t_date, tickers]
             # specific return(타겟)이 있으면 사용, 없으면 forward return
             if t_date in targets.index:

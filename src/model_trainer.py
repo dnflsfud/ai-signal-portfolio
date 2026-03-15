@@ -30,7 +30,7 @@ LGBM_PARAMS = {
 
 # 예측 스무딩: 새 예측 = alpha * new + (1-alpha) * old
 # 낮을수록 예측이 천천히 변함 → turnover 감소, 재훈련 상관 증가
-PREDICTION_EMA_ALPHA = 0.2
+PREDICTION_EMA_ALPHA = 0.5
 
 TRAIN_WINDOW = 756      # 3년
 RETRAIN_FREQ = 63       # 3개월
@@ -78,12 +78,15 @@ def train_model(
         model.fit(
             X_train, y_train,
             eval_set=[(X_val, y_val)],
-            callbacks=[lgb.early_stopping(100, verbose=False), lgb.log_evaluation(0)],
+            callbacks=[lgb.early_stopping(50, verbose=False), lgb.log_evaluation(0)],
         )
     else:
         model.fit(X_train, y_train)
 
     return model
+
+
+MIN_TREES = 10  # 최소 트리 수 (이하면 degenerate로 판단)
 
 
 def predict_cross_sectional(
@@ -158,23 +161,25 @@ def walk_forward_train(
             val_dates = all_dates[val_start:val_end]
 
             prev_model = current_model
-            current_model = train_model(panel, targets, feature_names, train_dates, val_dates)
+            new_model = train_model(panel, targets, feature_names, train_dates, val_dates)
+
+            # Degenerate 모델 fallback: n_trees < MIN_TREES이면 이전 모델 재사용
+            n_trees = new_model.n_estimators_
+            if n_trees < MIN_TREES and prev_model is not None:
+                print(f"[ModelTrainer] WARNING: Degenerate model ({n_trees} trees) -> reuse prev model")
+                current_model = prev_model
+            else:
+                current_model = new_model
             models[t_date] = current_model
             last_train_idx = t_idx
 
             print(f"[ModelTrainer] 재훈련 @ {t_date.strftime('%Y-%m-%d')} "
-                  f"(train: {len(train_dates)}d, val: {len(val_dates)}d)")
+                  f"(train: {len(train_dates)}d, val: {len(val_dates)}d, trees: {n_trees})")
 
-        # 예측: 현재 모델 + 이전 모델 앙상블 (안정화)
+        # 예측: 현재 모델만 사용 (앙상블 제거 — 시그널 즉시 반영)
         pred = predict_cross_sectional(current_model, panel, feature_names, t_date)
 
-        if prev_model is not None and len(pred) > 0:
-            pred_old = predict_cross_sectional(prev_model, panel, feature_names, t_date)
-            if len(pred_old) > 0:
-                common = pred.index.intersection(pred_old.index)
-                pred[common] = 0.8 * pred[common] + 0.2 * pred_old[common]
-
-        # EMA 스무딩: 이전 예측과 블렌딩 (안정화)
+        # EMA 스무딩: α=0.5로 완화 (이전 0.2 → 새 정보 50% 반영)
         if prev_pred is not None and len(pred) > 0:
             alpha = PREDICTION_EMA_ALPHA
             common = pred.index.intersection(prev_pred.index)

@@ -17,22 +17,48 @@ from sklearn.covariance import LedoitWolf
 from typing import Optional, Dict, List
 
 RISK_AVERSION = 0.5       # Grid Search 최적
-TURNOVER_PENALTY = 0.05   # Grid Search 최적
-MAX_TE_ANNUAL = 0.025     # 연율화 TE 상한 2.5%
-MAX_SINGLE_TURNOVER = 0.15
+TURNOVER_PENALTY = 0.3    # 턴오버 페널티
+MAX_TE_ANNUAL = 0.125     # TE 12.5% (BM=MCW)
+MAX_SINGLE_TURNOVER = 0.15  # 리밸런싱당 턴오버 하드캡 복원
 SECTOR_DEVIATION = 0.20
 COV_LOOKBACK = 126
+BM_WEIGHT_FLOOR = 0.50    # BM 비중의 50% 이상 유지
+MAX_ACTIVE_SHARE = 0.50   # Total Active Share ≤ 50%
 
 
-def estimate_covariance(returns: pd.DataFrame, lookback: int = COV_LOOKBACK) -> np.ndarray:
-    """Ledoit-Wolf shrinkage로 공분산 행렬 추정."""
+def estimate_covariance(
+    returns: pd.DataFrame,
+    lookback: int = COV_LOOKBACK,
+    bm_weights: Optional[np.ndarray] = None,
+) -> np.ndarray:
+    """Ledoit-Wolf shrinkage + mega-cap 변동성 조정.
+
+    Mega-cap 종목(BM 비중 > 평균의 2배)의 변동성을 cross-sectional 평균으로
+    부분적 shrinkage하여 optimizer가 과도하게 underweight하지 않도록 함.
+    """
     recent = returns.iloc[-lookback:].dropna()
     if len(recent) < 30:
         return np.eye(returns.shape[1]) * 0.04 / 252
 
     lw = LedoitWolf()
     lw.fit(recent.values)
-    return lw.covariance_
+    cov = lw.covariance_.copy()
+
+    # Mega-cap 변동성 조정
+    if bm_weights is not None:
+        n = len(bm_weights)
+        mean_bm = 1.0 / n
+        vols = np.sqrt(np.diag(cov))
+        avg_vol = vols.mean()
+
+        for i in range(n):
+            if bm_weights[i] > mean_bm * 2:  # mega-cap
+                # 변동성을 평균으로 50% shrinkage
+                shrink_factor = (0.5 * avg_vol + 0.5 * vols[i]) / vols[i] if vols[i] > 0 else 1.0
+                cov[i, :] *= shrink_factor
+                cov[:, i] *= shrink_factor
+
+    return cov
 
 
 def build_sector_constraints(
@@ -115,9 +141,16 @@ def optimize_portfolio(
     constraints = [
         cp.sum(w) == 1,
         w >= 0,
-        risk <= max_daily_te_var,              # TE ≤ 5% (연율화) 하드 제약
+        risk <= max_daily_te_var,              # TE ≤ 12.5% (연율화) 하드 제약
         turnover <= MAX_SINGLE_TURNOVER,       # 1회 리밸런싱 턴오버 하드캡
     ]
+
+    # BM 비중 하한: 각 종목 최소 BM의 50% 유지 (mega-cap 과도 underweight 방지)
+    weight_floor = bm_weights * BM_WEIGHT_FLOOR
+    constraints.append(w >= weight_floor)
+
+    # Active Share ≤ 50%: sum(|w - bm|) ≤ 1.0 (Active Share = sum/2)
+    constraints.append(cp.norm1(w - bm_weights) <= MAX_ACTIVE_SHARE * 2)
 
     # 섹터 제약
     if sector_map is not None:

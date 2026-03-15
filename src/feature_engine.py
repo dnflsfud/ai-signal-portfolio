@@ -52,6 +52,89 @@ def cs_rank(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # ===========================================================================
+# Revision 전처리 유틸리티
+# ===========================================================================
+
+def clean_revision_spikes(rev: pd.DataFrame, threshold: float = 30) -> pd.DataFrame:
+    """실적발표 전후 컨센서스 기간 전환으로 인한 급락 스무딩.
+
+    1일 급락 > threshold인 경우 해당일을 전일값(ffill)으로 대체하여
+    diff 계산 시 인위적 절벽이 발생하지 않도록 함.
+
+    - 종목당 연 3~4회, 65%가 실적시즌(1,4,7,10월)에 집중
+    - 30~90pt 급락이 일반적
+    """
+    cleaned = rev.copy()
+    daily_drop = cleaned.diff()
+    spike_mask = daily_drop < -threshold
+    cleaned[spike_mask] = np.nan
+    cleaned = cleaned.ffill()
+    n_spikes = spike_mask.sum().sum()
+    print(f"[RevisionClean] {n_spikes}개 스파이크 스무딩 (threshold={threshold})")
+    return cleaned
+
+
+def build_bounded_revision_features(
+    rev: pd.DataFrame, prefix: str
+) -> Dict[str, pd.DataFrame]:
+    """Bounded 지표(-100~100)에 특화된 Revision feature 생성.
+
+    문제: 단순 diff 사용 시, 100 유지(diff=0) → CS z-score 중립/하위
+         반면 50→80(diff=+30) → z-score 상위. 100 유지가 더 좋은데 저평가.
+
+    해결:
+      1. 기존 diff는 정제된 데이터에서 계산 (스파이크 제거)
+      2. level_persist: rolling mean / 100 → 100 유지 시 +1.0 (GBT interaction)
+      3. time_at_extreme: 최근 N일 중 극단값 비율 (persistence 포착)
+      4. level_dir: level × 변화방향 복합 (상단 유지 = 강한 양수)
+    """
+    features: Dict[str, pd.DataFrame] = {}
+
+    # ── 기존 feature (정제 데이터 기반) ──
+    features[f"{prefix}"] = rev
+    features[f"{prefix}_diff_5d"] = rev - rev.shift(5)
+    features[f"{prefix}_diff_21d"] = rev - rev.shift(21)
+    features[f"{prefix}_diff_63d"] = rev - rev.shift(63)
+    features[f"{prefix}_ma_63d"] = rev.rolling(63, min_periods=21).mean()
+    features[f"{prefix}_accel"] = (rev - rev.shift(5)) - (rev - rev.shift(21))
+    features[f"{prefix}_rank"] = cs_rank(rev)
+    features[f"{prefix}_rel_strength"] = cs_rank(rev - rev.shift(21))
+    features[f"{prefix}_vol"] = rev.rolling(63, min_periods=21).std()
+    features[f"{prefix}_trend"] = (
+        rev.rolling(21, min_periods=10).mean()
+        - rev.rolling(63, min_periods=21).mean()
+    )
+    features[f"{prefix}_momentum"] = cs_rank(rev - rev.shift(5))
+    features[f"{prefix}_vs_median"] = rev - rev.rolling(252, min_periods=126).median()
+
+    # ── NEW: Bounded 보정 feature ──
+
+    # 1. Level persistence: rolling mean 정규화 → 100 유지 = +1.0
+    features[f"{prefix}_level_persist_21d"] = (
+        rev.rolling(21, min_periods=5).mean() / 100
+    )
+    features[f"{prefix}_level_persist_63d"] = (
+        rev.rolling(63, min_periods=21).mean() / 100
+    )
+
+    # 2. Time at extreme: 극단 유지 비율 (GBT가 "100유지" 패턴 학습)
+    features[f"{prefix}_time_high"] = (
+        (rev > 70).astype(float).rolling(21, min_periods=5).mean()
+    )
+    features[f"{prefix}_time_low"] = (
+        (rev < -70).astype(float).rolling(21, min_periods=5).mean()
+    )
+
+    # 3. Level-direction composite: 레벨 × 변화방향
+    #    100유지(dir=0) → 1.0, 100↑(dir=+1) → 1.3, 50↑(dir=+1) → 0.65
+    diff_5d = rev - rev.shift(5)
+    direction = np.sign(diff_5d)
+    features[f"{prefix}_level_dir"] = (rev / 100) * (1 + direction * 0.3)
+
+    return features
+
+
+# ===========================================================================
 # Category 1: Accounting / Fundamental (~100 features)
 # ===========================================================================
 
@@ -66,10 +149,14 @@ VALUATION_SHEETS = [
 ]
 
 
+    # EPS/Sales/Margin: 변화율·가속도만 중요, level 자체는 제거
+LEVEL_SKIP_SHEETS = {"BEST_EPS", "BEST_SALES", "BEST_GROSS_MARGIN", "OPER_MARGIN"}
+
+
 def build_accounting_features(data: UniverseData) -> Dict[str, pd.DataFrame]:
     features: Dict[str, pd.DataFrame] = {}
 
-    # -- Base fundamentals: 7 sheets × 9 features = 63 --
+    # -- Base fundamentals --
     for sheet in ACCOUNTING_BASE:
         try:
             raw = data.get_sheet(sheet)
@@ -79,18 +166,18 @@ def build_accounting_features(data: UniverseData) -> Dict[str, pd.DataFrame]:
         # 변화율 (4 windows)
         for w in [21, 63, 126, 252]:
             features[f"{p}_chg_{w}d"] = safe_pct_change(raw, w)
-        # 가속도
+        # 가속도 (변화율의 변화율)
         features[f"{p}_accel"] = safe_pct_change(raw, 21) - safe_pct_change(raw, 63)
-        # Level Z-score
-        features[f"{p}_level_z"] = cross_sectional_zscore(raw)
         # 변화의 변동성 (fundamental stability)
         chg21 = safe_pct_change(raw, 21)
         features[f"{p}_chg_vol"] = chg21.rolling(63, min_periods=21).std()
-        # Cross-sectional rank
-        features[f"{p}_rank"] = cs_rank(raw)
-        # 252d median 대비
-        med = raw.rolling(252, min_periods=126).median()
-        features[f"{p}_vs_median"] = (raw / med.replace(0, np.nan)) - 1
+
+        # Level features: EPS/Sales/Margin은 제외 (변화율이 더 중요)
+        if sheet not in LEVEL_SKIP_SHEETS:
+            features[f"{p}_level_z"] = cross_sectional_zscore(raw)
+            features[f"{p}_rank"] = cs_rank(raw)
+            med = raw.rolling(252, min_periods=126).median()
+            features[f"{p}_vs_median"] = (raw / med.replace(0, np.nan)) - 1
 
     # -- Valuation: 4 sheets × 7 features = 28 --
     for sheet in VALUATION_SHEETS:
@@ -311,46 +398,28 @@ def build_sellside_features(data: UniverseData) -> Dict[str, pd.DataFrame]:
     except KeyError:
         pass
 
-    # --- EPS Revision (~12) ---
+    # --- EPS Revision (~17, spike-cleaned + bounded-adjusted) ---
     try:
-        eps_rev = data.get_sheet("Factset_EPS_Revision")
-        features["eps_rev"] = eps_rev
-        features["eps_rev_diff_5d"] = eps_rev - eps_rev.shift(5)
-        features["eps_rev_diff_21d"] = eps_rev - eps_rev.shift(21)
-        features["eps_rev_diff_63d"] = eps_rev - eps_rev.shift(63)
-        features["eps_rev_ma_63d"] = eps_rev.rolling(63, min_periods=21).mean()
-        features["eps_rev_accel"] = (eps_rev - eps_rev.shift(5)) - (eps_rev - eps_rev.shift(21))
-        features["eps_rev_rank"] = cs_rank(eps_rev)
-        features["eps_rev_rel_strength"] = cs_rank(eps_rev - eps_rev.shift(21))
-        features["eps_rev_vol"] = eps_rev.rolling(63, min_periods=21).std()
-        features["eps_rev_trend"] = eps_rev.rolling(21, min_periods=10).mean() - eps_rev.rolling(63, min_periods=21).mean()
-        features["eps_rev_momentum"] = cs_rank(eps_rev - eps_rev.shift(5))
-        features["eps_rev_vs_median"] = eps_rev - eps_rev.rolling(252, min_periods=126).median()
+        eps_rev_raw = data.get_sheet("Factset_EPS_Revision")
+        eps_rev = clean_revision_spikes(eps_rev_raw, threshold=30)
+        features.update(build_bounded_revision_features(eps_rev, "eps_rev"))
     except KeyError:
         pass
 
-    # --- Sales Revision (~12) ---
+    # --- Sales Revision (~17, spike-cleaned + bounded-adjusted) ---
     try:
-        sales_rev = data.get_sheet("Factset_Sales_Revision")
-        features["sales_rev"] = sales_rev
-        features["sales_rev_diff_5d"] = sales_rev - sales_rev.shift(5)
-        features["sales_rev_diff_21d"] = sales_rev - sales_rev.shift(21)
-        features["sales_rev_diff_63d"] = sales_rev - sales_rev.shift(63)
-        features["sales_rev_ma_63d"] = sales_rev.rolling(63, min_periods=21).mean()
-        features["sales_rev_accel"] = (sales_rev - sales_rev.shift(5)) - (sales_rev - sales_rev.shift(21))
-        features["sales_rev_rank"] = cs_rank(sales_rev)
-        features["sales_rev_rel_strength"] = cs_rank(sales_rev - sales_rev.shift(21))
-        features["sales_rev_vol"] = sales_rev.rolling(63, min_periods=21).std()
-        features["sales_rev_trend"] = sales_rev.rolling(21, min_periods=10).mean() - sales_rev.rolling(63, min_periods=21).mean()
-        features["sales_rev_momentum"] = cs_rank(sales_rev - sales_rev.shift(5))
-        features["sales_rev_vs_median"] = sales_rev - sales_rev.rolling(252, min_periods=126).median()
+        sales_rev_raw = data.get_sheet("Factset_Sales_Revision")
+        sales_rev = clean_revision_spikes(sales_rev_raw, threshold=30)
+        features.update(build_bounded_revision_features(sales_rev, "sales_rev"))
     except KeyError:
         pass
 
-    # --- Cross-revision (~4) ---
+    # --- Cross-revision (~4, on cleaned data) ---
     try:
-        eps_rev = data.get_sheet("Factset_EPS_Revision")
-        sales_rev = data.get_sheet("Factset_Sales_Revision")
+        eps_rev_raw = data.get_sheet("Factset_EPS_Revision")
+        sales_rev_raw = data.get_sheet("Factset_Sales_Revision")
+        eps_rev = clean_revision_spikes(eps_rev_raw, threshold=30)
+        sales_rev = clean_revision_spikes(sales_rev_raw, threshold=30)
         features["rev_divergence"] = eps_rev - sales_rev
         features["rev_rank_divergence"] = cs_rank(eps_rev) - cs_rank(sales_rev)
         features["rev_combined"] = (eps_rev + sales_rev) / 2
@@ -485,16 +554,16 @@ def build_conditioning_features(data: UniverseData) -> Dict[str, pd.DataFrame]:
     disp_med = cs_disp_21.rolling(252, min_periods=126).median()
     features["is_high_dispersion"] = bcast((cs_disp_21 > disp_med * 1.2).astype(float))
 
-    # ===== Fundamental regime (~7) =====
+    # ===== Fundamental regime (~7, spike-cleaned) =====
     try:
-        eps_rev = data.get_sheet("Factset_EPS_Revision")
+        eps_rev = clean_revision_spikes(data.get_sheet("Factset_EPS_Revision"), 30)
         rev_pos_pct = (eps_rev > 0).sum(axis=1) / eps_rev.shape[1]
         features["regime_rev_breadth_eps"] = bcast(rev_pos_pct)
         features["is_rev_expansion"] = bcast((rev_pos_pct > 0.6).astype(float))
     except KeyError:
         pass
     try:
-        sales_rev = data.get_sheet("Factset_Sales_Revision")
+        sales_rev = clean_revision_spikes(data.get_sheet("Factset_Sales_Revision"), 30)
         rev_pos_s = (sales_rev > 0).sum(axis=1) / sales_rev.shape[1]
         features["regime_rev_breadth_sales"] = bcast(rev_pos_s)
     except KeyError:
