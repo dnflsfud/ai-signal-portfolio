@@ -1,5 +1,9 @@
+# -*- coding: utf-8 -*-
 """
-AI Signal Portfolio Dashboard (Streamlit)
+AI Signal Portfolio Dashboard
+===============================
+Streamlit - CSV 결과물 기반 시각화
+
 실행: streamlit run app.py
 """
 
@@ -10,792 +14,698 @@ import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
 from pathlib import Path
+from datetime import datetime
 
-st.set_page_config(page_title="AI Signal Portfolio", layout="wide", page_icon="📊")
+# ---------------------------------------------------------------------------
+# Page Config
+# ---------------------------------------------------------------------------
+st.set_page_config(
+    page_title="AI Signal Portfolio",
+    page_icon="📊",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 
-CSV_DIR = Path("./outputs/csv")
-REPORT_DIR = Path("./outputs/reports")
+# ---------------------------------------------------------------------------
+# Paths
+# ---------------------------------------------------------------------------
+PROJECT_ROOT = Path(__file__).resolve().parent
+CSV_DIR = PROJECT_ROOT / "outputs" / "csv"
+REPORT_DIR = PROJECT_ROOT / "outputs" / "reports"
+
+# ---------------------------------------------------------------------------
+# Color Palette
+# ---------------------------------------------------------------------------
+COLORS = {
+    "fund": "#1f77b4",
+    "benchmark": "#ff7f0e",
+    "active": "#2ca02c",
+    "negative": "#d62728",
+    "purple": "#9467bd",
+}
+
+GROUP_COLORS = {
+    "Accounting": "#1f77b4",
+    "Price": "#ff7f0e",
+    "Sellside": "#2ca02c",
+    "Conditioning": "#d62728",
+    "Factor": "#9467bd",
+}
 
 
-# ─── Data Loading ──────────────────────────────────────────
-
-@st.cache_data
-def load_csv(name: str, base_dir: Path = CSV_DIR) -> pd.DataFrame:
-    path = base_dir / name
-    if not path.exists():
-        return pd.DataFrame()
-    df = pd.read_csv(path)
-    if "date" in df.columns:
-        df["date"] = pd.to_datetime(df["date"])
-    return df
+# ---------------------------------------------------------------------------
+# Data Loading (cached)
+# ---------------------------------------------------------------------------
+@st.cache_data(ttl=300)
+def load_daily_performance():
+    fp = CSV_DIR / "daily_performance.csv"
+    if not fp.exists():
+        return None
+    return pd.read_csv(fp, parse_dates=["date"], index_col="date")
 
 
-@st.cache_data
-def load_all():
+@st.cache_data(ttl=300)
+def load_portfolio_weights():
+    fp = CSV_DIR / "portfolio_weights.csv"
+    if not fp.exists():
+        return None
+    return pd.read_csv(fp, parse_dates=["date"], index_col="date")
+
+
+@st.cache_data(ttl=300)
+def load_benchmark_weights():
+    fp = CSV_DIR / "benchmark_weights.csv"
+    if not fp.exists():
+        return None
+    return pd.read_csv(fp, parse_dates=["date"], index_col="date")
+
+
+@st.cache_data(ttl=300)
+def load_feature_importance():
+    fp = CSV_DIR / "feature_importance.csv"
+    if not fp.exists():
+        return None
+    return pd.read_csv(fp)
+
+
+@st.cache_data(ttl=300)
+def load_ic_series():
+    fp = CSV_DIR / "ic_series.csv"
+    if not fp.exists():
+        return None
+    return pd.read_csv(fp, parse_dates=["date"])
+
+
+@st.cache_data(ttl=300)
+def load_style_sector_tilt():
+    fp = CSV_DIR / "style_sector_tilt.csv"
+    if not fp.exists():
+        return None
+    return pd.read_csv(fp, parse_dates=["date"])
+
+
+@st.cache_data(ttl=300)
+def load_monthly_regime():
+    fp = CSV_DIR / "monthly_regime.csv"
+    if not fp.exists():
+        return None
+    return pd.read_csv(fp)
+
+
+@st.cache_data(ttl=300)
+def load_group_attribution():
+    fp = CSV_DIR / "group_attribution.csv"
+    if not fp.exists():
+        return None
+    return pd.read_csv(fp, parse_dates=["date"], index_col="date")
+
+
+@st.cache_data(ttl=300)
+def load_li_attribution():
+    fp = CSV_DIR / "li_attribution.csv"
+    if not fp.exists():
+        return None
+    return pd.read_csv(fp, parse_dates=["date"])
+
+
+@st.cache_data(ttl=300)
+def load_model_structure():
+    fp = CSV_DIR / "model_structure.csv"
+    if not fp.exists():
+        return None
+    return pd.read_csv(fp)
+
+
+@st.cache_data(ttl=300)
+def load_ow_explanations():
+    fp = REPORT_DIR / "lightgbm_monthly_ow_explanations.csv"
+    if not fp.exists():
+        return None
+    return pd.read_csv(fp)
+
+
+# ---------------------------------------------------------------------------
+# Helper
+# ---------------------------------------------------------------------------
+def compute_metrics(perf: pd.DataFrame) -> dict:
+    port = perf["fund_daily_return"].dropna()
+    bm = perf["bm_daily_return"].dropna()
+    active = perf["active_daily_return"].dropna()
+    ann = 252
+
+    ann_ret = port.mean() * ann
+    ann_vol = port.std() * np.sqrt(ann)
+    sharpe = ann_ret / ann_vol if ann_vol > 0 else 0
+
+    bm_ret = bm.mean() * ann
+    bm_vol = bm.std() * np.sqrt(ann)
+    bm_sharpe = bm_ret / bm_vol if bm_vol > 0 else 0
+
+    active_ret = active.mean() * ann
+    te = active.std() * np.sqrt(ann)
+    ir = active_ret / te if te > 0 else 0
+
+    cum = perf["fund_cumulative"]
+    dd = (cum / cum.cummax()) - 1
+    max_dd = dd.min()
+    win_rate = (active > 0).mean()
+    n_years = len(port) / ann
+    total_ret = cum.iloc[-1] / cum.iloc[0] - 1
+    calmar = total_ret / abs(max_dd) if max_dd != 0 else 0
+
     return {
-        "perf": load_csv("daily_performance.csv"),
-        "weights": load_csv("portfolio_weights.csv"),
-        "bm_weights": load_csv("benchmark_weights.csv"),
-        "importance": load_csv("feature_importance.csv"),
-        "group_attr": load_csv("group_attribution.csv"),
-        "li_attr": load_csv("li_attribution.csv"),
-        "ic": load_csv("ic_series.csv"),
-        "model": load_csv("model_structure.csv"),
-        "regime": load_csv("monthly_regime.csv"),
-        "style_sector": load_csv("style_sector_tilt.csv"),
-        "ow_explain": load_csv("lightgbm_monthly_ow_explanations.csv", REPORT_DIR),
+        "ann_ret": ann_ret, "ann_vol": ann_vol, "sharpe": sharpe,
+        "bm_ret": bm_ret, "bm_vol": bm_vol, "bm_sharpe": bm_sharpe,
+        "active_ret": active_ret, "te": te, "ir": ir,
+        "max_dd": max_dd, "win_rate": win_rate, "calmar": calmar,
+        "n_years": n_years, "total_ret": total_ret,
+        "total_bm_ret": perf["bm_cumulative"].iloc[-1] / perf["bm_cumulative"].iloc[0] - 1,
     }
 
 
-# ─── Sidebar & Navigation ─────────────────────────────────
+# ---------------------------------------------------------------------------
+# Sidebar
+# ---------------------------------------------------------------------------
+def sidebar():
+    st.sidebar.title("AI Signal Portfolio")
+    st.sidebar.markdown("---")
 
-st.sidebar.title("📊 AI Signal Portfolio")
-page = st.sidebar.radio("Navigation", [
-    "🏠 Overview",
-    "📈 Performance",
-    "⚖️ Portfolio Weights",
-    "🎯 Style / Sector Tilt",
-    "🌲 Model Structure",
-    "🔬 Attribution",
-    "📅 Monthly Regime & OW Report",
-])
+    perf = load_daily_performance()
+    if perf is not None:
+        min_date = perf.index.min().date()
+        max_date = perf.index.max().date()
+        st.sidebar.markdown(f"**Data:** {min_date} ~ {max_date}")
 
-data = load_all()
+        date_range = st.sidebar.date_input(
+            "Analysis Period",
+            value=(min_date, max_date),
+            min_value=min_date,
+            max_value=max_date,
+        )
+        if len(date_range) == 2:
+            start, end = date_range
+        else:
+            start, end = min_date, max_date
+    else:
+        start, end = None, None
+
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("**Config A (Final)**")
+    st.sidebar.markdown("""
+    - Rebal: 10-day (bi-weekly)
+    - Penalty: 0.3
+    - Max Turnover: 15%
+    - TE Cap: 12.5%
+    - BM Floor: 50%
+    - Active Share Cap: 50%
+    - Benchmark: MCW
+    """)
+
+    if (CSV_DIR / "daily_performance.csv").exists():
+        mtime = datetime.fromtimestamp((CSV_DIR / "daily_performance.csv").stat().st_mtime)
+        st.sidebar.markdown(f"**Last Update:** {mtime.strftime('%Y-%m-%d %H:%M')}")
+
+    return start, end
 
 
-# ─── Page: Overview ────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# Page: Overview
+# ---------------------------------------------------------------------------
+def page_overview(start, end):
+    st.header("Portfolio Overview")
 
-if page == "🏠 Overview":
-    st.title("AI Signal Portfolio — Overview")
+    perf = load_daily_performance()
+    if perf is None:
+        st.error("daily_performance.csv not found. Run pipeline first.")
+        return
 
-    perf = data["perf"]
-    if perf.empty:
-        st.warning("CSV 파일이 없습니다. 먼저 `python export_csv.py`를 실행하세요.")
-        st.stop()
+    if start and end:
+        mask = (perf.index >= pd.Timestamp(start)) & (perf.index <= pd.Timestamp(end))
+        pf = perf[mask].copy()
+        pf["fund_cumulative"] = (1 + pf["fund_daily_return"]).cumprod()
+        pf["bm_cumulative"] = (1 + pf["bm_daily_return"]).cumprod()
+    else:
+        pf = perf
 
-    # KPI Cards
-    ann_ret = perf["fund_daily_return"].mean() * 252
-    ann_vol = perf["fund_daily_return"].std() * np.sqrt(252)
-    sharpe = ann_ret / ann_vol if ann_vol > 0 else 0
-    active_ret = perf["active_daily_return"].mean() * 252
-    te = perf["active_daily_return"].std() * np.sqrt(252)
-    ir = active_ret / te if te > 0 else 0
-    max_dd = (perf["fund_cumulative"] / perf["fund_cumulative"].cummax() - 1).min()
+    m = compute_metrics(pf)
 
-    ic_df = data["ic"]
-    avg_ic = ic_df["IC"].mean() if not ic_df.empty else 0
-
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Sharpe Ratio", f"{sharpe:.2f}")
-    c2.metric("Active Return", f"{active_ret:.2%}")
-    c3.metric("Information Ratio", f"{ir:.2f}")
-    c4.metric("Avg IC", f"{avg_ic:.4f}")
-
-    c5, c6, c7, c8 = st.columns(4)
-    c5.metric("Annual Return", f"{ann_ret:.2%}")
-    c6.metric("Annual Vol", f"{ann_vol:.2%}")
-    c7.metric("Tracking Error", f"{te:.2%}")
-    c8.metric("Max Drawdown", f"{max_dd:.2%}")
+    # KPI cards
+    c1, c2, c3, c4, c5, c6 = st.columns(6)
+    with c1:
+        st.metric("Annual Return", f"{m['ann_ret']:.2%}", f"{m['active_ret']:+.2%} vs BM")
+    with c2:
+        st.metric("Sharpe Ratio", f"{m['sharpe']:.2f}")
+    with c3:
+        st.metric("Active Return", f"{m['active_ret']:.2%}")
+    with c4:
+        st.metric("Information Ratio", f"{m['ir']:.2f}")
+    with c5:
+        st.metric("Max Drawdown", f"{m['max_dd']:.2%}")
+    with c6:
+        ic = load_ic_series()
+        avg_ic = ic["IC"].mean() if ic is not None else 0
+        st.metric("Avg IC", f"{avg_ic:.4f}")
 
     st.markdown("---")
 
-    # Cumulative Returns
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=perf["date"], y=perf["fund_cumulative"],
-        name="Fund", line=dict(width=2, color="#1f77b4"),
-    ))
-    fig.add_trace(go.Scatter(
-        x=perf["date"], y=perf["bm_cumulative"],
-        name="Benchmark (MktCap)", line=dict(width=2, color="#ff7f0e", dash="dot"),
-    ))
-    fig.update_layout(
-        title="Cumulative Returns: Fund vs Benchmark",
-        yaxis_title="Cumulative Return",
-        height=450, template="plotly_white",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02),
-    )
-    st.plotly_chart(fig, use_container_width=True)
+    # Cumulative returns + table
+    col_l, col_r = st.columns([2, 1])
 
-    # Li et al. Attribution Summary
-    li = data["li_attr"]
-    if not li.empty:
-        avg_lin = li["linear_ratio"].mean()
-        avg_mnl = li["marginal_nl_ratio"].mean()
-        avg_int = li["interaction_ratio"].mean()
-
-        st.subheader("Li et al. 3-Component Attribution (Average)")
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Linear", f"{avg_lin:.1%}")
-        col2.metric("Marginal Non-linear", f"{avg_mnl:.1%}")
-        col3.metric("Interaction", f"{avg_int:.1%}")
-
-        fig_pie = go.Figure(data=[go.Pie(
-            labels=["Linear", "Marginal Non-linear", "Interaction"],
-            values=[avg_lin, avg_mnl, avg_int],
-            hole=0.4,
-            marker_colors=["#2ecc71", "#3498db", "#e74c3c"],
-        )])
-        fig_pie.update_layout(height=300, title="Non-linear Decomposition")
-        st.plotly_chart(fig_pie, use_container_width=True)
-
-
-# ─── Page: Performance ────────────────────────────────────
-
-elif page == "📈 Performance":
-    st.title("Performance Analysis")
-    perf = data["perf"]
-    if perf.empty:
-        st.warning("daily_performance.csv not found.")
-        st.stop()
-
-    tab1, tab2, tab3, tab4 = st.tabs(["Cumulative", "Drawdown", "Monthly Heatmap", "IC Series"])
-
-    with tab1:
+    with col_l:
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=perf["date"], y=perf["fund_cumulative"], name="Fund"))
-        fig.add_trace(go.Scatter(x=perf["date"], y=perf["bm_cumulative"], name="BM"))
-        active_cum = (1 + perf["active_daily_return"]).cumprod()
-        fig.add_trace(go.Scatter(x=perf["date"], y=active_cum, name="Active (Cumulative)"))
-        fig.update_layout(height=500, template="plotly_white", title="Cumulative Returns")
+        fig.add_trace(go.Scatter(
+            x=pf.index, y=pf["fund_cumulative"],
+            name="Fund", line=dict(color=COLORS["fund"], width=2),
+        ))
+        fig.add_trace(go.Scatter(
+            x=pf.index, y=pf["bm_cumulative"],
+            name="Benchmark (MCW)", line=dict(color=COLORS["benchmark"], width=2, dash="dash"),
+        ))
+        fig.update_layout(
+            title="Cumulative Returns: Fund vs Benchmark",
+            yaxis_title="Cumulative Return",
+            hovermode="x unified", height=450,
+            legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01),
+        )
         st.plotly_chart(fig, use_container_width=True)
 
-        # Rolling IR
-        active = perf.set_index("date")["active_daily_return"]
-        roll_mean = active.rolling(252, min_periods=126).mean() * 252
-        roll_std = active.rolling(252, min_periods=126).std() * np.sqrt(252)
-        roll_ir = roll_mean / roll_std.replace(0, np.nan)
+    with col_r:
+        st.markdown("#### Performance Summary")
+        summary = pd.DataFrame({
+            "Metric": ["Annual Return", "Annual Vol", "Sharpe", "Total Return",
+                        "Max Drawdown", "Calmar", "Win Rate", "Period (yrs)"],
+            "Fund": [f"{m['ann_ret']:.2%}", f"{m['ann_vol']:.2%}", f"{m['sharpe']:.2f}",
+                     f"{m['total_ret']:.2%}", f"{m['max_dd']:.2%}", f"{m['calmar']:.2f}",
+                     f"{m['win_rate']:.1%}", f"{m['n_years']:.1f}"],
+            "BM": [f"{m['bm_ret']:.2%}", f"{m['bm_vol']:.2%}", f"{m['bm_sharpe']:.2f}",
+                   f"{m['total_bm_ret']:.2%}", "-", "-", "-", "-"],
+        })
+        st.dataframe(summary.set_index("Metric"), use_container_width=True)
 
-        fig_ir = go.Figure()
-        fig_ir.add_trace(go.Scatter(x=roll_ir.index, y=roll_ir.values, name="Rolling IR (252d)"))
-        fig_ir.add_hline(y=0, line_dash="dash", line_color="gray")
-        fig_ir.add_hline(y=1, line_dash="dash", line_color="green", annotation_text="IR=1.0")
-        fig_ir.update_layout(height=350, template="plotly_white", title="Rolling Information Ratio")
-        st.plotly_chart(fig_ir, use_container_width=True)
+        st.markdown("#### Active")
+        active_df = pd.DataFrame({
+            "": ["Active Return", "Tracking Error", "IR"],
+            "Value": [f"{m['active_ret']:.2%}", f"{m['te']:.2%}", f"{m['ir']:.2f}"],
+        })
+        st.dataframe(active_df.set_index(""), use_container_width=True)
 
-    with tab2:
-        dd = perf["fund_cumulative"] / perf["fund_cumulative"].cummax() - 1
-        fig_dd = go.Figure()
-        fig_dd.add_trace(go.Scatter(
-            x=perf["date"], y=dd, fill="tozeroy",
-            fillcolor="rgba(255,0,0,0.2)", line=dict(color="red"),
-            name="Drawdown"
+    # Drawdown
+    cum = pf["fund_cumulative"]
+    dd = (cum / cum.cummax()) - 1
+    fig_dd = go.Figure()
+    fig_dd.add_trace(go.Scatter(
+        x=dd.index, y=dd.values,
+        fill="tozeroy", fillcolor="rgba(214,39,40,0.2)",
+        line=dict(color=COLORS["negative"], width=1), name="Drawdown",
+    ))
+    fig_dd.update_layout(title="Drawdown", yaxis_title="Drawdown",
+                          yaxis_tickformat=".1%", height=280, showlegend=False)
+    st.plotly_chart(fig_dd, use_container_width=True)
+
+
+# ---------------------------------------------------------------------------
+# Page: Returns Analysis
+# ---------------------------------------------------------------------------
+def page_returns_analysis(start, end):
+    st.header("Returns Analysis")
+
+    perf = load_daily_performance()
+    if perf is None:
+        return
+
+    if start and end:
+        mask = (perf.index >= pd.Timestamp(start)) & (perf.index <= pd.Timestamp(end))
+        perf = perf[mask]
+
+    active = perf["active_daily_return"]
+
+    # Rolling IR
+    window = st.slider("Rolling Window (days)", 63, 504, 252, 21)
+    rmean = active.rolling(window, min_periods=window // 2).mean() * 252
+    rstd = active.rolling(window, min_periods=window // 2).std() * np.sqrt(252)
+    rir = rmean / rstd.replace(0, np.nan)
+
+    fig_ir = go.Figure()
+    fig_ir.add_trace(go.Scatter(
+        x=rir.index, y=rir.values, name=f"Rolling IR ({window}d)",
+        line=dict(color=COLORS["fund"], width=1.5),
+    ))
+    fig_ir.add_hline(y=0, line_dash="dash", line_color="gray", opacity=0.5)
+    fig_ir.add_hline(y=0.5, line_dash="dash", line_color="green", opacity=0.3,
+                     annotation_text="IR=0.5")
+    fig_ir.update_layout(title=f"Rolling IR ({window}d)", yaxis_title="IR", height=400)
+    st.plotly_chart(fig_ir, use_container_width=True)
+
+    # Monthly heatmaps
+    st.subheader("Monthly Returns Heatmap")
+    c1, c2 = st.columns(2)
+    for col, (rc, title) in zip([c1, c2], [("fund_daily_return", "Fund"), ("active_daily_return", "Active")]):
+        with col:
+            rets = perf[rc].copy()
+            monthly = rets.resample("ME").apply(lambda x: (1 + x).prod() - 1)
+            pivot = pd.DataFrame({"year": monthly.index.year, "month": monthly.index.month, "ret": monthly.values})
+            hm = pivot.pivot(index="year", columns="month", values="ret")
+            hm.columns = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+            fig_hm = go.Figure(data=go.Heatmap(
+                z=hm.values * 100, x=hm.columns, y=hm.index.astype(str),
+                colorscale="RdYlGn", zmid=0,
+                text=np.where(np.isnan(hm.values), "", np.char.add(np.char.mod("%.1f", hm.values * 100), "%")),
+                texttemplate="%{text}", textfont={"size": 10},
+            ))
+            fig_hm.update_layout(title=f"{title} Monthly Returns (%)", height=400, yaxis_autorange="reversed")
+            st.plotly_chart(fig_hm, use_container_width=True)
+
+    # Distribution
+    st.subheader("Active Return Distribution")
+    fig_dist = go.Figure()
+    fig_dist.add_trace(go.Histogram(x=active.values * 100, nbinsx=80,
+                                      marker_color=COLORS["fund"], opacity=0.7))
+    fig_dist.add_vline(x=0, line_dash="dash", line_color="red")
+    fig_dist.add_vline(x=active.mean() * 100, line_dash="dash", line_color="green",
+                       annotation_text=f"Mean={active.mean()*100:.3f}%")
+    fig_dist.update_layout(title="Daily Active Returns (%)", xaxis_title="%", yaxis_title="Freq", height=320)
+    st.plotly_chart(fig_dist, use_container_width=True)
+
+
+# ---------------------------------------------------------------------------
+# Page: Portfolio
+# ---------------------------------------------------------------------------
+def page_portfolio(start, end):
+    st.header("Portfolio Composition")
+
+    pw = load_portfolio_weights()
+    bw = load_benchmark_weights()
+    if pw is None:
+        st.error("No weights data.")
+        return
+
+    # Latest weights bar
+    latest = pw.index[-1]
+    lpw = pw.loc[latest].sort_values(ascending=False)
+    lbw = bw.loc[latest] if bw is not None and latest in bw.index else pd.Series(1 / len(lpw), index=lpw.index)
+
+    fig_bar = go.Figure()
+    fig_bar.add_trace(go.Bar(x=lpw.index, y=lpw.values * 100, name="Fund", marker_color=COLORS["fund"]))
+    fig_bar.add_trace(go.Bar(x=lpw.index, y=[lbw.get(t, 0) * 100 for t in lpw.index],
+                             name="BM", marker_color=COLORS["benchmark"], opacity=0.6))
+    fig_bar.update_layout(title=f"Weights ({latest.strftime('%Y-%m-%d')})",
+                           yaxis_title="%", barmode="group", height=450, xaxis_tickangle=-45)
+    st.plotly_chart(fig_bar, use_container_width=True)
+
+    # Active weights horizontal bar
+    st.subheader("Active Weights (Fund - BM)")
+    aw = (lpw - lbw.reindex(lpw.index).fillna(0)).sort_values()
+    fig_aw = go.Figure()
+    fig_aw.add_trace(go.Bar(
+        x=aw.values * 100, y=aw.index, orientation="h",
+        marker_color=["green" if v > 0 else "red" for v in aw.values],
+    ))
+    fig_aw.update_layout(title="Active Weights (%)", xaxis_title="%", height=max(400, len(aw) * 18))
+    st.plotly_chart(fig_aw, use_container_width=True)
+
+    # Weight evolution
+    st.subheader("Weight Evolution")
+    top_n = st.slider("Stocks to show", 5, 50, 15)
+    top = pw.iloc[-1].sort_values(ascending=False).head(top_n).index.tolist()
+    fig_evo = go.Figure()
+    for t in top:
+        fig_evo.add_trace(go.Scatter(x=pw.index, y=pw[t] * 100, name=t, stackgroup="one"))
+    fig_evo.update_layout(title=f"Top {top_n} Weights Over Time", yaxis_title="%",
+                           hovermode="x unified", height=500)
+    st.plotly_chart(fig_evo, use_container_width=True)
+
+
+# ---------------------------------------------------------------------------
+# Page: Sector & Style
+# ---------------------------------------------------------------------------
+def page_sector_style(start, end):
+    st.header("Sector & Style Analysis")
+
+    tilt = load_style_sector_tilt()
+    if tilt is None:
+        st.error("No sector/style data.")
+        return
+
+    if start and end:
+        mask = (tilt["date"] >= pd.Timestamp(start)) & (tilt["date"] <= pd.Timestamp(end))
+        tilt = tilt[mask]
+
+    # Sector active weights
+    st.subheader("Sector Active Weights")
+    sec_cols = [c for c in tilt.columns if c.startswith("sector_") and not c.startswith("port_") and not c.startswith("bm_")]
+    fig_sec = go.Figure()
+    for c in sec_cols:
+        fig_sec.add_trace(go.Scatter(x=tilt["date"], y=tilt[c] * 100, name=c.replace("sector_", ""), mode="lines"))
+    fig_sec.add_hline(y=0, line_dash="dash", line_color="gray", opacity=0.3)
+    fig_sec.update_layout(title="Sector Active Weights (%)", yaxis_title="%", hovermode="x unified", height=450)
+    st.plotly_chart(fig_sec, use_container_width=True)
+
+    # Sector pie charts
+    c1, c2 = st.columns(2)
+    latest = tilt.iloc[-1]
+    with c1:
+        ps = {c.replace("port_sector_", ""): latest[c] for c in tilt.columns if c.startswith("port_sector_")}
+        fig_p = go.Figure(data=[go.Pie(labels=list(ps.keys()), values=list(ps.values()), hole=0.4)])
+        fig_p.update_layout(title="Fund Sectors (Latest)", height=400)
+        st.plotly_chart(fig_p, use_container_width=True)
+    with c2:
+        bs = {c.replace("bm_sector_", ""): latest[c] for c in tilt.columns if c.startswith("bm_sector_")}
+        fig_b = go.Figure(data=[go.Pie(labels=list(bs.keys()), values=list(bs.values()), hole=0.4)])
+        fig_b.update_layout(title="BM Sectors (Latest)", height=400)
+        st.plotly_chart(fig_b, use_container_width=True)
+
+    # Style active weights
+    st.subheader("Style Active Weights")
+    sty_cols = [c for c in tilt.columns if c.startswith("style_") and not c.startswith("port_") and not c.startswith("bm_")]
+    fig_sty = go.Figure()
+    for c in sty_cols:
+        fig_sty.add_trace(go.Scatter(x=tilt["date"], y=tilt[c] * 100, name=c.replace("style_", ""), mode="lines"))
+    fig_sty.add_hline(y=0, line_dash="dash", line_color="gray", opacity=0.3)
+    fig_sty.update_layout(title="Style Active Weights (%)", yaxis_title="%", hovermode="x unified", height=450)
+    st.plotly_chart(fig_sty, use_container_width=True)
+
+
+# ---------------------------------------------------------------------------
+# Page: Model & Signal
+# ---------------------------------------------------------------------------
+def page_model_signal(start, end):
+    st.header("Model & Signal Analysis")
+
+    # IC
+    ic_data = load_ic_series()
+    if ic_data is not None:
+        st.subheader("Information Coefficient (IC)")
+
+        if start and end:
+            mask = (ic_data["date"] >= pd.Timestamp(start)) & (ic_data["date"] <= pd.Timestamp(end))
+            icf = ic_data[mask]
+        else:
+            icf = ic_data
+
+        avg_ic = icf["IC"].mean()
+        ic_std = icf["IC"].std()
+        icir = avg_ic / ic_std if ic_std > 0 else 0
+        hit = (icf["IC"] > 0).mean()
+
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Mean IC", f"{avg_ic:.4f}")
+        c2.metric("IC Std", f"{ic_std:.4f}")
+        c3.metric("ICIR", f"{icir:.2f}")
+        c4.metric("Hit Rate", f"{hit:.0%}")
+
+        fig_ic = go.Figure()
+        fig_ic.add_trace(go.Bar(
+            x=icf["date"], y=icf["IC"],
+            marker_color=["green" if v > 0 else "red" for v in icf["IC"]], opacity=0.6, name="IC",
         ))
-        fig_dd.update_layout(height=400, template="plotly_white", title="Strategy Drawdown")
-        st.plotly_chart(fig_dd, use_container_width=True)
+        ic_rm = icf.set_index("date")["IC"].rolling(20, min_periods=5).mean()
+        fig_ic.add_trace(go.Scatter(x=ic_rm.index, y=ic_rm.values, name="MA(20)",
+                                      line=dict(color="navy", width=2)))
+        fig_ic.add_hline(y=avg_ic, line_dash="dash", line_color="blue",
+                         annotation_text=f"Avg={avg_ic:.4f}")
+        fig_ic.update_layout(title="IC Time Series", yaxis_title="IC (Spearman)", height=400)
+        st.plotly_chart(fig_ic, use_container_width=True)
 
-    with tab3:
-        monthly = perf.set_index("date")["fund_daily_return"].resample("ME").apply(
-            lambda x: (1 + x).prod() - 1
-        )
-        pivot = pd.DataFrame({
-            "year": monthly.index.year,
-            "month": monthly.index.month,
-            "return": monthly.values,
-        }).pivot(index="year", columns="month", values="return")
-        pivot.columns = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
-                         "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    # Feature importance
+    fi = load_feature_importance()
+    if fi is not None:
+        st.subheader("Feature Importance")
+        c1, c2 = st.columns([2, 1])
+        with c1:
+            top_n = st.slider("Top N", 10, 50, 30, key="fi")
+            fi_t = fi.head(top_n)
+            fig_fi = go.Figure()
+            fig_fi.add_trace(go.Bar(
+                x=fi_t["importance"], y=fi_t["feature"], orientation="h",
+                marker_color=[GROUP_COLORS.get(g, "#7f7f7f") for g in fi_t["group"]],
+                text=fi_t["group"], textposition="inside", textfont_size=9,
+            ))
+            fig_fi.update_layout(title=f"Top {top_n} Features", xaxis_title="Importance (Gain)",
+                                  height=max(400, top_n * 22), yaxis_autorange="reversed")
+            st.plotly_chart(fig_fi, use_container_width=True)
+        with c2:
+            gp = fi.groupby("group")["importance"].sum()
+            gp_pct = gp / gp.sum()
+            fig_gp = go.Figure(data=[go.Pie(labels=gp_pct.index, values=gp_pct.values,
+                                              marker_colors=[GROUP_COLORS.get(g, "#7f7f7f") for g in gp_pct.index],
+                                              hole=0.4)])
+            fig_gp.update_layout(title="Group Importance", height=400)
+            st.plotly_chart(fig_gp, use_container_width=True)
 
-        fig_hm = px.imshow(
-            pivot.values, x=pivot.columns, y=pivot.index.astype(str),
-            color_continuous_scale="RdYlGn", zmin=-0.10, zmax=0.10,
-            text_auto=".1%", aspect="auto",
-        )
-        fig_hm.update_layout(height=500, title="Monthly Returns Heatmap")
-        st.plotly_chart(fig_hm, use_container_width=True)
+            gc = fi.groupby("group")["feature"].count()
+            st.markdown("#### Features per Group")
+            for g, c in gc.items():
+                st.write(f"- **{g}**: {c}")
 
-    with tab4:
-        ic_df = data["ic"]
-        if not ic_df.empty:
-            fig_ic = go.Figure()
-            fig_ic.add_trace(go.Bar(x=ic_df["date"], y=ic_df["IC"], name="IC", opacity=0.6))
-            avg_ic = ic_df["IC"].mean()
-            fig_ic.add_hline(y=avg_ic, line_dash="dash", line_color="red",
-                           annotation_text=f"Mean IC={avg_ic:.4f}")
-            fig_ic.update_layout(height=400, template="plotly_white",
-                               title="Information Coefficient Over Time")
-            st.plotly_chart(fig_ic, use_container_width=True)
+    # Group attribution
+    ga = load_group_attribution()
+    if ga is not None:
+        st.subheader("Group Attribution Over Time")
+        fig_ga = go.Figure()
+        for col in ga.columns:
+            fig_ga.add_trace(go.Scatter(x=ga.index, y=ga[col], name=col, stackgroup="one"))
+        fig_ga.update_layout(title="Feature Group SHAP", yaxis_title="Share",
+                              yaxis_tickformat=".0%", height=400)
+        st.plotly_chart(fig_ga, use_container_width=True)
+
+    # Li attribution
+    li = load_li_attribution()
+    if li is not None:
+        st.subheader("Linear vs Nonlinear (Li et al.)")
+        fig_li = go.Figure()
+        fig_li.add_trace(go.Bar(x=li["date"], y=li["linear_ratio"], name="Linear", marker_color="#1f77b4"))
+        fig_li.add_trace(go.Bar(x=li["date"], y=li["marginal_nl_ratio"], name="Marginal NL", marker_color="#ff7f0e"))
+        fig_li.add_trace(go.Bar(x=li["date"], y=li["interaction_ratio"], name="Interaction", marker_color="#2ca02c"))
+        fig_li.update_layout(barmode="stack", title="3-Component Attribution",
+                              yaxis_tickformat=".0%", height=400)
+        st.plotly_chart(fig_li, use_container_width=True)
+
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Avg Linear", f"{li['linear_ratio'].mean():.2%}")
+        c2.metric("Avg Marginal NL", f"{li['marginal_nl_ratio'].mean():.2%}")
+        c3.metric("Avg Interaction", f"{li['interaction_ratio'].mean():.2%}")
 
 
-# ─── Page: Portfolio Weights ───────────────────────────────
+# ---------------------------------------------------------------------------
+# Page: Regime & Explanations
+# ---------------------------------------------------------------------------
+def page_regime(start, end):
+    st.header("Monthly Regime & Position Explanations")
 
-elif page == "⚖️ Portfolio Weights":
-    st.title("Portfolio Weights — Recent 6 Months")
+    regime = load_monthly_regime()
+    ow_expl = load_ow_explanations()
 
-    weights = data["weights"]
-    bm_weights = data["bm_weights"]
-    if weights.empty:
-        st.warning("portfolio_weights.csv not found.")
-        st.stop()
+    if regime is not None:
+        st.subheader("Market Regime Timeline")
+        dir_colors = {"Bullish": "green", "Bearish": "red", "Sideways": "gray"}
+        fig_r = go.Figure()
+        for _, row in regime.iterrows():
+            fig_r.add_trace(go.Bar(
+                x=[row["year_month"]], y=[row["ew_return_21d"] * 100],
+                marker_color=dir_colors.get(row["market_direction"], "gray"),
+                showlegend=False,
+                hovertemplate=(
+                    f"Month: {row['year_month']}<br>"
+                    f"Dir: {row['market_direction']}<br>"
+                    f"Vol: {row['volatility_regime']}<br>"
+                    f"Rotation: {row['sector_rotation']}<br>"
+                    f"Return: {row['ew_return_21d']:.2%}<br>"
+                    f"Active Share: {row['total_active_share']:.2%}"
+                ),
+            ))
+        fig_r.update_layout(title="Monthly Direction (21d EW Return %)", yaxis_title="%", height=350)
+        st.plotly_chart(fig_r, use_container_width=True)
 
-    weights["date"] = pd.to_datetime(weights["date"])
-    tickers = [c for c in weights.columns if c != "date"]
+        st.dataframe(regime[["year_month", "market_direction", "volatility_regime",
+                             "sector_rotation", "n_ow_stocks", "n_uw_stocks", "total_active_share"]],
+                     use_container_width=True, hide_index=True)
 
-    last_date = weights["date"].max()
-    cutoff = last_date - pd.DateOffset(months=6)
-    recent = weights[weights["date"] >= cutoff].copy()
+    if ow_expl is not None:
+        st.subheader("Position Explanations")
+        months = ow_expl["year_month"].tolist()
+        sel = st.selectbox("Month", months, index=len(months) - 1)
+        row = ow_expl[ow_expl["year_month"] == sel].iloc[0]
 
-    st.subheader(f"Recent Weights ({cutoff.strftime('%Y-%m')} ~ {last_date.strftime('%Y-%m')})")
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown(f"#### Regime: {row['regime_label']}")
+            st.markdown(f"**Date:** {row['rebal_date']}")
+            st.markdown(f"**Reason:** {row['regime_reason']}")
+            st.markdown(f"**Dominant:** {row['dominant_category_effects']}")
+        with c2:
+            st.markdown("#### Tilts")
+            st.markdown(f"**Sector:** {row['sector_tilt']}")
+            st.markdown(f"**Style:** {row['style_tilt']}")
+            st.markdown(f"**OW:** {row['n_ow_stocks']} | **UW:** {row['n_uw_stocks']}")
 
-    # Stacked Area Chart
-    fig = go.Figure()
-    for ticker in tickers:
-        fig.add_trace(go.Scatter(
-            x=recent["date"], y=recent[ticker],
-            stackgroup="one", name=ticker,
-        ))
-    fig.update_layout(
-        height=500, template="plotly_white",
-        title="Portfolio Weight Allocation (Stacked)",
-        yaxis_title="Weight", yaxis=dict(tickformat=".0%"),
-    )
+        st.markdown("---")
+        st.markdown("#### Overweight")
+        for item in str(row.get("top_ow_details", "")).split(" | "):
+            if item.strip():
+                st.markdown(f"- {item}")
+
+        st.markdown("#### Underweight")
+        for item in str(row.get("top_uw_details", "")).split(" | "):
+            if item.strip():
+                st.markdown(f"- {item}")
+
+
+# ---------------------------------------------------------------------------
+# Page: Model Structure
+# ---------------------------------------------------------------------------
+def page_model_structure(start, end):
+    st.header("Model Structure & Training")
+
+    ms = load_model_structure()
+    if ms is None:
+        st.error("No model data.")
+        return
+
+    fig = make_subplots(rows=2, cols=1,
+                        subplot_titles=("Trees per Retrain", "Avg Tree Depth"),
+                        shared_xaxes=True)
+    fig.add_trace(go.Bar(x=ms["retrain_date"], y=ms["n_trees"], name="Trees",
+                         marker_color=COLORS["fund"]), row=1, col=1)
+    fig.add_trace(go.Scatter(x=ms["retrain_date"], y=ms["avg_tree_depth"], name="Depth",
+                             mode="lines+markers", line=dict(color=COLORS["benchmark"])), row=2, col=1)
+    fig.update_layout(height=500, showlegend=False)
     st.plotly_chart(fig, use_container_width=True)
 
-    # Active Weights (vs BM)
-    if not bm_weights.empty:
-        bm_weights["date"] = pd.to_datetime(bm_weights["date"])
-        recent_bm = bm_weights[bm_weights["date"] >= cutoff].copy()
-
-        st.subheader("Active Weights (Portfolio - Benchmark)")
-
-        rebal_dates = sorted(recent["date"].unique(), reverse=True)
-        selected_date = st.selectbox(
-            "Select Rebalance Date",
-            [d.strftime("%Y-%m-%d") for d in rebal_dates],
-        )
-        sel_ts = pd.Timestamp(selected_date)
-
-        port_w = recent[recent["date"] == sel_ts][tickers].iloc[0]
-        bm_match = recent_bm[recent_bm["date"] == sel_ts]
-        if not bm_match.empty:
-            bm_w = bm_match[tickers].iloc[0]
-        else:
-            bm_w = pd.Series(1.0 / len(tickers), index=tickers)
-
-        active_w = port_w - bm_w
-        active_w = active_w.sort_values()
-
-        colors = ["#e74c3c" if v < 0 else "#2ecc71" for v in active_w.values]
-        fig_active = go.Figure(go.Bar(
-            x=active_w.values, y=active_w.index,
-            orientation="h", marker_color=colors,
-            text=[f"{v:+.1%}" for v in active_w.values],
-            textposition="outside",
-        ))
-        fig_active.update_layout(
-            height=max(400, len(tickers) * 25),
-            template="plotly_white",
-            title=f"Active Weights @ {selected_date}",
-            xaxis_title="Active Weight", xaxis=dict(tickformat=".1%"),
-        )
-        st.plotly_chart(fig_active, use_container_width=True)
-
-    # Weight History Table
-    st.subheader("Weight History (Table)")
-    display_df = recent.set_index("date")[tickers].T
-    display_df.columns = [c.strftime("%Y-%m-%d") for c in display_df.columns]
-    st.dataframe(display_df.style.format("{:.2%}").background_gradient(cmap="YlOrRd", axis=1), height=600)
-
-
-# ─── Page: Style / Sector Tilt ─────────────────────────────
-
-elif page == "🎯 Style / Sector Tilt":
-    st.title("Style / Sector Active Tilt Analysis")
-
-    ss = data["style_sector"]
-    if ss.empty:
-        st.warning("style_sector_tilt.csv not found. Re-run `python export_csv.py`.")
-        st.stop()
-
-    ss["date"] = pd.to_datetime(ss["date"])
-
-    tab_sector, tab_style, tab_detail = st.tabs(["Sector Tilt", "Style Tilt", "Detailed Table"])
-
-    # ── Sector Active Weight over time ──
-    with tab_sector:
-        sector_cols = [c for c in ss.columns if c.startswith("sector_")]
-        sector_names = [c.replace("sector_", "") for c in sector_cols]
-
-        st.subheader("Sector Active Weight (Portfolio - BM) Over Time")
-
-        # 최근 기간 필터
-        date_range = st.select_slider(
-            "Period",
-            options=["Full", "3Y", "1Y", "6M"],
-            value="1Y",
-            key="sector_period",
-        )
-        if date_range == "6M":
-            ss_filt = ss[ss["date"] >= ss["date"].max() - pd.DateOffset(months=6)]
-        elif date_range == "1Y":
-            ss_filt = ss[ss["date"] >= ss["date"].max() - pd.DateOffset(years=1)]
-        elif date_range == "3Y":
-            ss_filt = ss[ss["date"] >= ss["date"].max() - pd.DateOffset(years=3)]
-        else:
-            ss_filt = ss
-
-        fig_sec = go.Figure()
-        colors_sec = px.colors.qualitative.Set2
-        for i, (col, name) in enumerate(zip(sector_cols, sector_names)):
-            fig_sec.add_trace(go.Scatter(
-                x=ss_filt["date"], y=ss_filt[col],
-                name=name, mode="lines",
-                line=dict(color=colors_sec[i % len(colors_sec)]),
-            ))
-        fig_sec.add_hline(y=0, line_dash="dash", line_color="gray")
-        fig_sec.update_layout(
-            height=500, template="plotly_white",
-            title="Sector Active Weight Over Time",
-            yaxis_title="Active Weight", yaxis=dict(tickformat=".1%"),
-            legend=dict(orientation="h", yanchor="bottom", y=1.02),
-        )
-        st.plotly_chart(fig_sec, use_container_width=True)
-
-        # 최근 스냅샷 바 차트
-        latest = ss_filt.iloc[-1]
-        sec_vals = {name: latest[col] for col, name in zip(sector_cols, sector_names)}
-        sec_sorted = sorted(sec_vals.items(), key=lambda x: x[1], reverse=True)
-
-        fig_bar = go.Figure(go.Bar(
-            x=[v for _, v in sec_sorted],
-            y=[n for n, _ in sec_sorted],
-            orientation="h",
-            marker_color=["#2ecc71" if v >= 0 else "#e74c3c" for _, v in sec_sorted],
-            text=[f"{v:+.1%}" for _, v in sec_sorted],
-            textposition="outside",
-        ))
-        fig_bar.update_layout(
-            height=400, template="plotly_white",
-            title=f"Sector Tilt Snapshot @ {latest['date'].strftime('%Y-%m-%d')}",
-            xaxis=dict(tickformat=".1%"),
-        )
-        st.plotly_chart(fig_bar, use_container_width=True)
-
-        # 지배적 섹터 변화
-        if "dominant_ow_sector" in ss.columns:
-            st.subheader("Dominant OW / UW Sector History")
-            dom_df = ss_filt[["date", "dominant_ow_sector", "dominant_uw_sector"]].copy()
-            dom_df = dom_df.set_index("date")
-            st.dataframe(dom_df.tail(30), use_container_width=True)
-
-    # ── Style Active Weight over time ──
-    with tab_style:
-        style_cols = [c for c in ss.columns if c.startswith("style_")]
-        style_names = [c.replace("style_", "") for c in style_cols]
-
-        st.subheader("Style Active Weight (Portfolio - BM) Over Time")
-
-        date_range_sty = st.select_slider(
-            "Period",
-            options=["Full", "3Y", "1Y", "6M"],
-            value="1Y",
-            key="style_period",
-        )
-        if date_range_sty == "6M":
-            ss_filt_s = ss[ss["date"] >= ss["date"].max() - pd.DateOffset(months=6)]
-        elif date_range_sty == "1Y":
-            ss_filt_s = ss[ss["date"] >= ss["date"].max() - pd.DateOffset(years=1)]
-        elif date_range_sty == "3Y":
-            ss_filt_s = ss[ss["date"] >= ss["date"].max() - pd.DateOffset(years=3)]
-        else:
-            ss_filt_s = ss
-
-        fig_sty = go.Figure()
-        colors_sty = px.colors.qualitative.Pastel
-        for i, (col, name) in enumerate(zip(style_cols, style_names)):
-            fig_sty.add_trace(go.Scatter(
-                x=ss_filt_s["date"], y=ss_filt_s[col],
-                name=name, mode="lines",
-                line=dict(color=colors_sty[i % len(colors_sty)]),
-            ))
-        fig_sty.add_hline(y=0, line_dash="dash", line_color="gray")
-        fig_sty.update_layout(
-            height=500, template="plotly_white",
-            title="Style Active Weight Over Time",
-            yaxis_title="Active Weight", yaxis=dict(tickformat=".1%"),
-            legend=dict(orientation="h", yanchor="bottom", y=1.02),
-        )
-        st.plotly_chart(fig_sty, use_container_width=True)
-
-        # 최근 스냅샷 바 차트
-        latest_s = ss_filt_s.iloc[-1]
-        sty_vals = {name: latest_s[col] for col, name in zip(style_cols, style_names)}
-        sty_sorted = sorted(sty_vals.items(), key=lambda x: x[1], reverse=True)
-
-        fig_bar_s = go.Figure(go.Bar(
-            x=[v for _, v in sty_sorted],
-            y=[n for n, _ in sty_sorted],
-            orientation="h",
-            marker_color=["#3498db" if v >= 0 else "#e67e22" for _, v in sty_sorted],
-            text=[f"{v:+.1%}" for _, v in sty_sorted],
-            textposition="outside",
-        ))
-        fig_bar_s.update_layout(
-            height=350, template="plotly_white",
-            title=f"Style Tilt Snapshot @ {latest_s['date'].strftime('%Y-%m-%d')}",
-            xaxis=dict(tickformat=".1%"),
-        )
-        st.plotly_chart(fig_bar_s, use_container_width=True)
-
-        # 지배적 스타일 변화
-        if "dominant_ow_style" in ss.columns:
-            st.subheader("Dominant OW / UW Style History")
-            dom_sty_df = ss_filt_s[["date", "dominant_ow_style", "dominant_uw_style"]].copy()
-            dom_sty_df = dom_sty_df.set_index("date")
-            st.dataframe(dom_sty_df.tail(30), use_container_width=True)
-
-    # ── Sector/Style Allocation Breakdown ──
-    with tab_detail:
-        st.subheader("Sector Allocation: Portfolio vs Benchmark")
-
-        # 최근 리밸런싱
-        latest_d = ss.iloc[-1]
-        port_sec = {name: latest_d.get(f"port_sector_{name}", 0) for name in sector_names}
-        bm_sec = {name: latest_d.get(f"bm_sector_{name}", 0) for name in sector_names}
-
-        sec_comp = pd.DataFrame({
-            "Sector": sector_names,
-            "Portfolio": [port_sec[n] for n in sector_names],
-            "Benchmark": [bm_sec[n] for n in sector_names],
-            "Active": [port_sec[n] - bm_sec[n] for n in sector_names],
-        }).sort_values("Active", ascending=False)
-
-        fig_comp = go.Figure()
-        fig_comp.add_trace(go.Bar(
-            x=sec_comp["Sector"], y=sec_comp["Portfolio"],
-            name="Portfolio", marker_color="#3498db",
-        ))
-        fig_comp.add_trace(go.Bar(
-            x=sec_comp["Sector"], y=sec_comp["Benchmark"],
-            name="Benchmark", marker_color="#95a5a6",
-        ))
-        fig_comp.update_layout(
-            barmode="group", height=450, template="plotly_white",
-            title=f"Sector Allocation: Portfolio vs BM @ {latest_d['date'].strftime('%Y-%m-%d')}",
-            yaxis=dict(tickformat=".0%"),
-        )
-        st.plotly_chart(fig_comp, use_container_width=True)
-
-        st.subheader("Style Allocation: Portfolio vs Benchmark")
-        port_sty = {name: latest_d.get(f"port_style_{name}", 0) for name in style_names}
-        bm_sty = {name: latest_d.get(f"bm_style_{name}", 0) for name in style_names}
-
-        sty_comp = pd.DataFrame({
-            "Style": style_names,
-            "Portfolio": [port_sty[n] for n in style_names],
-            "Benchmark": [bm_sty[n] for n in style_names],
-            "Active": [port_sty[n] - bm_sty[n] for n in style_names],
-        }).sort_values("Active", ascending=False)
-
-        fig_comp_s = go.Figure()
-        fig_comp_s.add_trace(go.Bar(
-            x=sty_comp["Style"], y=sty_comp["Portfolio"],
-            name="Portfolio", marker_color="#9b59b6",
-        ))
-        fig_comp_s.add_trace(go.Bar(
-            x=sty_comp["Style"], y=sty_comp["Benchmark"],
-            name="Benchmark", marker_color="#95a5a6",
-        ))
-        fig_comp_s.update_layout(
-            barmode="group", height=400, template="plotly_white",
-            title=f"Style Allocation: Portfolio vs BM @ {latest_d['date'].strftime('%Y-%m-%d')}",
-            yaxis=dict(tickformat=".0%"),
-        )
-        st.plotly_chart(fig_comp_s, use_container_width=True)
-
-        # Full tilt data table
-        st.subheader("Full Tilt Data")
-        st.dataframe(ss, use_container_width=True, height=400)
-
-
-# ─── Page: Model Structure ─────────────────────────────────
-
-elif page == "🌲 Model Structure":
-    st.title("LightGBM Model Structure")
-
-    model_df = data["model"]
-    if model_df.empty:
-        st.warning("model_structure.csv not found.")
-        st.stop()
-
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Total Retrain Count", len(model_df))
-    c2.metric("Avg Trees", f"{model_df['n_trees'].mean():.0f}")
-    c3.metric("Avg Depth", f"{model_df['avg_tree_depth'].mean():.1f}")
-
-    if "retrain_date" in model_df.columns:
-        model_df["retrain_date"] = pd.to_datetime(model_df["retrain_date"])
-        fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
-                           subplot_titles=["Number of Trees (Best Iteration)", "Unique Features Used"])
-
-        fig.add_trace(go.Scatter(
-            x=model_df["retrain_date"],
-            y=model_df["best_iteration"] if "best_iteration" in model_df.columns else model_df["n_trees"],
-            mode="lines+markers", name="Best Iteration",
-        ), row=1, col=1)
-
-        fig.add_trace(go.Scatter(
-            x=model_df["retrain_date"],
-            y=model_df["n_unique_features_used"],
-            mode="lines+markers", name="Unique Features",
-        ), row=2, col=1)
-
-        fig.update_layout(height=600, template="plotly_white", showlegend=False)
-        st.plotly_chart(fig, use_container_width=True)
-
-    imp_df = data["importance"]
-    if not imp_df.empty:
-        st.subheader("Feature Importance (Top 30)")
-        top30 = imp_df.head(30)
-        fig_imp = px.bar(
-            top30, x="importance", y="feature", color="group",
-            orientation="h", height=700,
-            color_discrete_sequence=px.colors.qualitative.Set2,
-        )
-        fig_imp.update_layout(
-            yaxis=dict(autorange="reversed"),
-            template="plotly_white",
-            title="Top 30 Feature Importance (LightGBM Gain)",
-        )
-        st.plotly_chart(fig_imp, use_container_width=True)
-
-    st.subheader("Model Detail Table")
-    st.dataframe(model_df, use_container_width=True)
-
-
-# ─── Page: Attribution ─────────────────────────────────────
-
-elif page == "🔬 Attribution":
-    st.title("Attribution Analysis")
-
-    tab1, tab2, tab3 = st.tabs(["Group Contribution", "Li et al. 3-Component", "Feature Importance"])
-
-    with tab1:
-        ga = data["group_attr"]
-        if not ga.empty:
-            ga["date"] = pd.to_datetime(ga["date"])
-            groups = [c for c in ga.columns if c != "date"]
-
-            fig = go.Figure()
-            for g in groups:
-                fig.add_trace(go.Scatter(
-                    x=ga["date"], y=ga[g], stackgroup="one", name=g,
-                ))
-            fig.update_layout(
-                height=500, template="plotly_white",
-                title="Feature Group Contribution Over Time (Stacked)",
-                yaxis_title="Contribution Share", yaxis=dict(tickformat=".0%"),
-            )
-            st.plotly_chart(fig, use_container_width=True)
-
-            avg = ga[groups].mean()
-            fig_avg = px.bar(
-                x=avg.index, y=avg.values,
-                labels={"x": "Group", "y": "Avg Contribution"},
-                color=avg.index,
-                color_discrete_sequence=px.colors.qualitative.Set2,
-            )
-            fig_avg.update_layout(
-                height=350, template="plotly_white",
-                title="Average Group Contribution",
-                yaxis=dict(tickformat=".0%"), showlegend=False,
-            )
-            st.plotly_chart(fig_avg, use_container_width=True)
-
-    with tab2:
-        li = data["li_attr"]
-        if not li.empty:
-            li["date"] = pd.to_datetime(li["date"])
-
-            fig_li = go.Figure()
-            fig_li.add_trace(go.Bar(x=li["date"], y=li["linear_ratio"], name="Linear", marker_color="#2ecc71"))
-            fig_li.add_trace(go.Bar(x=li["date"], y=li["marginal_nl_ratio"], name="Marginal NL", marker_color="#3498db"))
-            fig_li.add_trace(go.Bar(x=li["date"], y=li["interaction_ratio"], name="Interaction", marker_color="#e74c3c"))
-            fig_li.update_layout(
-                barmode="stack", height=450, template="plotly_white",
-                title="Li et al. 3-Component Attribution Over Time",
-                yaxis_title="Ratio", yaxis=dict(tickformat=".0%"),
-            )
-            st.plotly_chart(fig_li, use_container_width=True)
-
-            group_cols_linear = [c for c in li.columns if c.startswith("linear_") and c != "linear_ratio"]
-            group_cols_mnl = [c for c in li.columns if c.startswith("marginal_nl_") and c != "marginal_nl_ratio"]
-            group_cols_int = [c for c in li.columns if c.startswith("interaction_") and c != "interaction_ratio"]
-
-            if group_cols_linear:
-                st.subheader("Group-Level Li Decomposition (Average)")
-                group_names = [c.replace("linear_", "") for c in group_cols_linear]
-                avg_lin = [li[c].mean() for c in group_cols_linear]
-                avg_mnl = [li[c].mean() for c in group_cols_mnl] if group_cols_mnl else [0] * len(group_names)
-                avg_int = [li[c].mean() for c in group_cols_int] if group_cols_int else [0] * len(group_names)
-
-                fig_grp = go.Figure()
-                fig_grp.add_trace(go.Bar(x=group_names, y=avg_lin, name="Linear", marker_color="#2ecc71"))
-                fig_grp.add_trace(go.Bar(x=group_names, y=avg_mnl, name="Marginal NL", marker_color="#3498db"))
-                fig_grp.add_trace(go.Bar(x=group_names, y=avg_int, name="Interaction", marker_color="#e74c3c"))
-                fig_grp.update_layout(
-                    barmode="stack", height=400, template="plotly_white",
-                    yaxis=dict(tickformat=".0%"),
-                )
-                st.plotly_chart(fig_grp, use_container_width=True)
-
-    with tab3:
-        imp = data["importance"]
-        if not imp.empty:
-            n_show = st.slider("Number of features to show", 10, 100, 30)
-            top_n = imp.head(n_show)
-            fig_imp = px.bar(
-                top_n, x="importance", y="feature", color="group",
-                orientation="h",
-                color_discrete_sequence=px.colors.qualitative.Set2,
-            )
-            fig_imp.update_layout(
-                yaxis=dict(autorange="reversed"),
-                height=max(400, n_show * 22), template="plotly_white",
-            )
-            st.plotly_chart(fig_imp, use_container_width=True)
-
-
-# ─── Page: Monthly Regime & OW Report ─────────────────────
-
-elif page == "📅 Monthly Regime & OW Report":
-    st.title("Monthly Regime & OW/UW Explanation")
-
-    regime = data["regime"]
-    ow_explain = data["ow_explain"]
-
-    if regime.empty and ow_explain.empty:
-        st.warning("monthly_regime.csv or ow_explanations.csv not found.")
-        st.stop()
-
-    tab_regime, tab_ow_report = st.tabs(["Monthly Regime", "Detailed OW Report"])
-
-    # ── Tab 1: Monthly Regime (existing) ──
-    with tab_regime:
-        if not regime.empty:
-            for _, row in regime.iterrows():
-                month = row["year_month"]
-                with st.expander(f"📅 {month} — {row['market_direction']} / {row['volatility_regime']} / {row['sector_rotation']}", expanded=True):
-                    c1, c2, c3, c4 = st.columns(4)
-                    c1.metric("Market", row["market_direction"])
-                    c2.metric("Volatility", row["volatility_regime"])
-                    c3.metric("Rotation", row["sector_rotation"])
-                    c4.metric("Active Share", f"{row['total_active_share']:.1%}")
-
-                    st.markdown(f"**21d EW Return**: {row['ew_return_21d']:.2%} | **Vol (Ann)**: {row['vol_21d_ann']:.2%}")
-                    st.markdown(f"**OW Stocks**: {row['n_ow_stocks']} | **UW Stocks**: {row['n_uw_stocks']}")
-
-                    st.markdown("##### 🟢 Top Overweight Positions")
-                    ow_parts = str(row["top_ow_stocks"]).split(" | ")
-                    for part in ow_parts:
-                        if part and part != "nan":
-                            st.markdown(f"- {part}")
-
-                    st.markdown("##### 🔴 Top Underweight Positions")
-                    uw_parts = str(row["top_uw_stocks"]).split(" | ")
-                    for part in uw_parts:
-                        if part and part != "nan":
-                            st.markdown(f"- {part}")
-
-            # Regime Timeline
-            st.subheader("Regime Timeline")
-            regime_df = regime.copy()
-            color_map = {"Bullish": "#2ecc71", "Bearish": "#e74c3c", "Sideways": "#95a5a6"}
-            colors = [color_map.get(d, "#95a5a6") for d in regime_df["market_direction"]]
-
-            fig_regime = go.Figure()
-            fig_regime.add_trace(go.Bar(
-                x=regime_df["year_month"],
-                y=regime_df["ew_return_21d"],
-                marker_color=colors,
-                text=[f"{r['market_direction']}" for _, r in regime_df.iterrows()],
-                textposition="outside",
-            ))
-            fig_regime.update_layout(
-                height=350, template="plotly_white",
-                title="Monthly 21d EW Return (Color = Market Direction)",
-                yaxis=dict(tickformat=".1%"),
-            )
-            st.plotly_chart(fig_regime, use_container_width=True)
-
-    # ── Tab 2: Detailed OW Report (NEW) ──
-    with tab_ow_report:
-        if ow_explain.empty:
-            st.warning("lightgbm_monthly_ow_explanations.csv not found.")
-        else:
-            st.subheader("Detailed Monthly OW/UW Analysis with Sector & Style Context")
-
-            for _, row in ow_explain.iterrows():
-                month = row["year_month"]
-                regime_label = row.get("regime_label", "N/A")
-
-                with st.expander(f"📅 {month} — {regime_label}", expanded=True):
-                    # Regime 정보
-                    st.markdown(f"**Regime**: {regime_label}")
-                    st.markdown(f"**Regime Reason**: {row.get('regime_reason', 'N/A')}")
-                    st.markdown(f"**Dominant Category Effects**: {row.get('dominant_category_effects', 'N/A')}")
-
-                    st.markdown("---")
-
-                    # 섹터/스타일 Tilt
-                    col_a, col_b = st.columns(2)
-                    with col_a:
-                        st.markdown("##### 🏢 Sector Tilt")
-                        sector_tilt = str(row.get("sector_tilt", ""))
-                        if sector_tilt and sector_tilt != "nan":
-                            for part in sector_tilt.split(" | "):
-                                if part:
-                                    # 양수는 녹색, 음수는 빨간색
-                                    if "+" in part:
-                                        st.markdown(f"- :green[{part}]")
-                                    elif "-" in part:
-                                        st.markdown(f"- :red[{part}]")
-                                    else:
-                                        st.markdown(f"- {part}")
-                        else:
-                            st.markdown("_No significant sector tilt_")
-
-                    with col_b:
-                        st.markdown("##### 🎨 Style Tilt")
-                        style_tilt = str(row.get("style_tilt", ""))
-                        if style_tilt and style_tilt != "nan":
-                            for part in style_tilt.split(" | "):
-                                if part:
-                                    if "+" in part:
-                                        st.markdown(f"- :green[{part}]")
-                                    elif "-" in part:
-                                        st.markdown(f"- :red[{part}]")
-                                    else:
-                                        st.markdown(f"- {part}")
-                        else:
-                            st.markdown("_No significant style tilt_")
-
-                    st.markdown("---")
-                    st.markdown(f"**OW Stocks**: {row.get('n_ow_stocks', 0)} | **UW Stocks**: {row.get('n_uw_stocks', 0)}")
-
-                    # OW 종목 상세
-                    st.markdown("##### 🟢 Top OW Positions (with Sector/Style/Signal)")
-                    ow_details = str(row.get("top_ow_details", ""))
-                    if ow_details and ow_details != "nan":
-                        for part in ow_details.split(" | "):
-                            if part:
-                                st.markdown(f"- `{part}`")
-
-                    # UW 종목 상세
-                    st.markdown("##### 🔴 Top UW Positions (with Sector/Style/Signal)")
-                    uw_details = str(row.get("top_uw_details", ""))
-                    if uw_details and uw_details != "nan":
-                        for part in uw_details.split(" | "):
-                            if part:
-                                st.markdown(f"- `{part}`")
-
-            # Summary table
-            st.subheader("Full OW Explanations Data")
-            st.dataframe(ow_explain, use_container_width=True, height=400)
-
-
-# ─── Footer ───────────────────────────────────────────────
-
-st.sidebar.markdown("---")
-st.sidebar.markdown("**Data Source**: `outputs/csv/` + `outputs/reports/`")
-st.sidebar.markdown("Run `python export_csv.py` to generate data.")
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Total Retrains", len(ms))
+    c2.metric("Avg Trees", f"{ms['n_trees'].mean():.0f}")
+    c3.metric("Avg Features Used", f"{ms['n_unique_features_used'].mean():.0f}")
+    c4.metric("Avg Depth", f"{ms['avg_tree_depth'].mean():.1f}")
+
+    st.subheader("Retrain History")
+    st.dataframe(ms, use_container_width=True, hide_index=True)
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+def main():
+    start, end = sidebar()
+
+    if not (CSV_DIR / "daily_performance.csv").exists():
+        st.error("No CSV data. Run pipeline first:")
+        st.code("python main.py --data_path ./data/ai_signal_data.xlsx --output_dir ./outputs/")
+        return
+
+    pages = {
+        "Overview": page_overview,
+        "Returns Analysis": page_returns_analysis,
+        "Portfolio": page_portfolio,
+        "Sector & Style": page_sector_style,
+        "Model & Signal": page_model_signal,
+        "Regime & Explanations": page_regime,
+        "Model Structure": page_model_structure,
+    }
+
+    page = st.sidebar.radio("Navigate", list(pages.keys()))
+    pages[page](start, end)
+
+
+if __name__ == "__main__":
+    main()
