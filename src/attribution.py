@@ -576,6 +576,7 @@ def run_attribution(
         "linear_nonlinear_detail": {},
         "feature_importance": None,
         "portfolio_decomposition": {},
+        "stock_shap_breakdown": {},
         "shap_values_sample": None,
     }
 
@@ -606,6 +607,19 @@ def run_attribution(
         # --- Group attribution (absolute SHAP) ---
         group_contrib = feature_group_attribution(shap_vals, feature_names, feature_groups)
         results["group_contributions"][m_date] = group_contrib
+
+        # --- Per-stock raw SHAP group breakdown (unweighted) ---
+        stock_shap = {}
+        for i, ticker in enumerate(tickers):
+            stock_shap[ticker] = {}
+            for group_name, group_features in feature_groups.items():
+                indices = [j for j, f in enumerate(feature_names) if f in group_features]
+                if indices:
+                    stock_shap[ticker][group_name] = float(shap_vals[i, indices].sum())
+                else:
+                    stock_shap[ticker][group_name] = 0.0
+            stock_shap[ticker]["total"] = float(shap_vals[i].sum())
+        results["stock_shap_breakdown"][m_date] = stock_shap
 
         # --- Li et al. 3-Component Attribution ---
         try:

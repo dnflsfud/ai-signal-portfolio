@@ -144,6 +144,22 @@ def load_ow_explanations():
     return pd.read_csv(fp)
 
 
+@st.cache_data(ttl=300)
+def load_stock_scores():
+    fp = CSV_DIR / "stock_scores.csv"
+    if not fp.exists():
+        return None
+    return pd.read_csv(fp, parse_dates=["date"], index_col="date")
+
+
+@st.cache_data(ttl=300)
+def load_stock_shap_attribution():
+    fp = CSV_DIR / "stock_shap_attribution.csv"
+    if not fp.exists():
+        return None
+    return pd.read_csv(fp, parse_dates=["date"])
+
+
 # ---------------------------------------------------------------------------
 # Helper
 # ---------------------------------------------------------------------------
@@ -683,6 +699,310 @@ def page_model_structure(start, end):
 
 
 # ---------------------------------------------------------------------------
+# Page: Stock Score & Attribution
+# ---------------------------------------------------------------------------
+TICKER_META = {
+    "AAPL": "Technology", "MSFT": "Technology", "GOOGL": "Communication",
+    "AMZN": "Consumer Disc.", "META": "Communication", "NVDA": "Semiconductors",
+    "AVGO": "Semiconductors", "MU": "Semiconductors", "AMD": "Semiconductors",
+    "000660": "Semiconductors", "005930": "Semiconductors",
+    "TSLA": "Consumer Disc.", "PLTR": "Technology", "CRM": "Technology",
+    "NFLX": "Communication", "GEV": "Industrials", "VRT": "Industrials",
+    "BE": "Industrials", "LITE": "Technology",
+    "UNH": "Healthcare", "LLY": "Healthcare", "ISRG": "Healthcare",
+    "ABBV": "Healthcare", "REGN": "Healthcare",
+    "JPM": "Financials", "V": "Financials", "MA": "Financials",
+    "BLK": "Financials", "SPGI": "Financials", "GS": "Financials",
+    "COST": "Consumer Staples", "HD": "Consumer Disc.", "PG": "Consumer Staples",
+    "MCD": "Consumer Disc.", "WMT": "Consumer Staples",
+    "CAT": "Industrials", "HON": "Industrials", "DE": "Industrials",
+    "UNP": "Industrials", "LMT": "Industrials", "ETN": "Industrials",
+    "XOM": "Energy", "LNG": "Energy", "FCX": "Materials", "LIN": "Materials",
+    "NEE": "Utilities", "AMT": "Real Estate", "EQIX": "Real Estate",
+    "TMUS": "Communication", "PLD": "Real Estate",
+}
+
+SHAP_GROUP_COLORS = {
+    "Accounting": "#1f77b4",
+    "Price": "#ff7f0e",
+    "Sellside": "#2ca02c",
+    "Conditioning": "#d62728",
+    "Factor": "#9467bd",
+}
+
+
+def page_stock_score_attribution(start, end):
+    st.header("Stock Score & Attribution")
+
+    pw = load_portfolio_weights()
+    bw = load_benchmark_weights()
+    scores = load_stock_scores()
+    shap_attr = load_stock_shap_attribution()
+
+    if pw is None:
+        st.error("No portfolio weights data. Run pipeline first.")
+        return
+
+    # --- 12-month cutoff ---
+    latest_date = pw.index.max()
+    cutoff_12m = latest_date - pd.DateOffset(months=12)
+
+    # --- Stock selector ---
+    all_tickers = sorted(pw.columns.tolist())
+
+    # Default: top 5 by latest active weight
+    if bw is not None and latest_date in bw.index:
+        aw = (pw.loc[latest_date] - bw.loc[latest_date]).sort_values(ascending=False)
+        default_tickers = aw.head(5).index.tolist()
+    else:
+        default_tickers = all_tickers[:5]
+
+    selected = st.multiselect(
+        "Select Stocks", all_tickers, default=default_tickers, key="score_stocks"
+    )
+    if not selected:
+        st.info("Select at least one stock.")
+        return
+
+    # =====================================================================
+    # Section 1: 12-month Weight Changes
+    # =====================================================================
+    st.subheader("12-Month Weight History")
+
+    pw_12m = pw[pw.index >= cutoff_12m][selected]
+    bw_12m = bw[bw.index >= cutoff_12m][selected] if bw is not None else None
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        fig_pw = go.Figure()
+        for t in selected:
+            fig_pw.add_trace(go.Scatter(
+                x=pw_12m.index, y=pw_12m[t] * 100,
+                name=t, mode="lines+markers", marker=dict(size=4),
+            ))
+        fig_pw.update_layout(
+            title="Portfolio Weight (%)", yaxis_title="%",
+            hovermode="x unified", height=420,
+            legend=dict(orientation="h", yanchor="bottom", y=-0.3),
+        )
+        st.plotly_chart(fig_pw, use_container_width=True)
+
+    with col2:
+        if bw_12m is not None:
+            fig_aw = go.Figure()
+            aw_12m = (pw_12m - bw_12m.reindex(pw_12m.index).fillna(0)) * 100
+            for t in selected:
+                fig_aw.add_trace(go.Scatter(
+                    x=aw_12m.index, y=aw_12m[t],
+                    name=t, mode="lines+markers", marker=dict(size=4),
+                ))
+            fig_aw.add_hline(y=0, line_dash="dash", line_color="gray", opacity=0.4)
+            fig_aw.update_layout(
+                title="Active Weight (Fund - BM) %", yaxis_title="%",
+                hovermode="x unified", height=420,
+                legend=dict(orientation="h", yanchor="bottom", y=-0.3),
+            )
+            st.plotly_chart(fig_aw, use_container_width=True)
+        else:
+            st.info("Benchmark weights not available.")
+
+    # =====================================================================
+    # Section 2: Score History
+    # =====================================================================
+    st.subheader("Score History (Prediction Z-Score)")
+
+    if scores is not None:
+        scores_12m = scores[scores.index >= cutoff_12m]
+        avail_tickers = [t for t in selected if t in scores_12m.columns]
+
+        if avail_tickers:
+            fig_score = go.Figure()
+            for t in avail_tickers:
+                s = scores_12m[t].dropna()
+                fig_score.add_trace(go.Scatter(
+                    x=s.index, y=s.values,
+                    name=t, mode="lines+markers", marker=dict(size=4),
+                ))
+            fig_score.add_hline(y=0, line_dash="dash", line_color="gray", opacity=0.4)
+            fig_score.add_hline(y=0.5, line_dash="dot", line_color="green", opacity=0.3,
+                                annotation_text="z=0.5")
+            fig_score.add_hline(y=-0.5, line_dash="dot", line_color="red", opacity=0.3,
+                                annotation_text="z=-0.5")
+            fig_score.update_layout(
+                title="Model Prediction Score (Z-Score)",
+                yaxis_title="Z-Score", hovermode="x unified", height=420,
+                legend=dict(orientation="h", yanchor="bottom", y=-0.3),
+            )
+            st.plotly_chart(fig_score, use_container_width=True)
+
+            # Score summary table
+            st.markdown("#### Latest Score Snapshot")
+            latest_scores_date = scores_12m.index.max()
+            latest_scores = scores_12m.loc[latest_scores_date, avail_tickers]
+            latest_pw_val = pw.loc[pw.index.max(), avail_tickers] * 100
+            latest_bw_val = bw.loc[bw.index.max(), avail_tickers] * 100 if bw is not None else pd.Series(0, index=avail_tickers)
+            latest_aw_val = latest_pw_val - latest_bw_val.reindex(latest_pw_val.index).fillna(0)
+
+            snap_df = pd.DataFrame({
+                "Ticker": avail_tickers,
+                "Sector": [TICKER_META.get(t, "-") for t in avail_tickers],
+                "Score (z)": [f"{latest_scores.get(t, 0):.2f}" for t in avail_tickers],
+                "Port Wt%": [f"{latest_pw_val.get(t, 0):.1f}" for t in avail_tickers],
+                "BM Wt%": [f"{latest_bw_val.get(t, 0):.1f}" for t in avail_tickers],
+                "Active Wt%": [f"{latest_aw_val.get(t, 0):.1f}" for t in avail_tickers],
+            })
+
+            def _score_signal(z_str):
+                z = float(z_str)
+                if z > 1.0:
+                    return "Very Strong +"
+                elif z > 0.5:
+                    return "Strong +"
+                elif z > 0:
+                    return "Mild +"
+                elif z > -0.5:
+                    return "Mild -"
+                elif z > -1.0:
+                    return "Strong -"
+                else:
+                    return "Very Strong -"
+
+            snap_df["Signal"] = snap_df["Score (z)"].apply(_score_signal)
+            st.dataframe(snap_df.set_index("Ticker"), use_container_width=True)
+        else:
+            st.info("No score data for selected stocks.")
+    else:
+        st.warning("stock_scores.csv not found. Re-run pipeline to generate.")
+
+    # =====================================================================
+    # Section 3: Factor Attribution (SHAP Breakdown)
+    # =====================================================================
+    st.subheader("Score Factor Attribution (SHAP)")
+
+    if shap_attr is not None:
+        shap_dates = sorted(shap_attr["date"].unique())
+        shap_avail_tickers = sorted(shap_attr["ticker"].unique())
+        sel_shap_tickers = [t for t in selected if t in shap_avail_tickers]
+
+        if sel_shap_tickers and shap_dates:
+            groups = [c for c in shap_attr.columns if c not in ("date", "ticker", "total")]
+
+            # --- Per-stock waterfall for latest SHAP date ---
+            sel_shap_date = st.selectbox(
+                "SHAP Date", shap_dates,
+                index=len(shap_dates) - 1, key="shap_date",
+                format_func=lambda d: d.strftime("%Y-%m-%d"),
+            )
+
+            shap_snap = shap_attr[shap_attr["date"] == sel_shap_date].set_index("ticker")
+
+            n_cols = min(len(sel_shap_tickers), 3)
+            cols = st.columns(n_cols)
+
+            for idx, ticker in enumerate(sel_shap_tickers):
+                with cols[idx % n_cols]:
+                    if ticker not in shap_snap.index:
+                        st.caption(f"{ticker}: No SHAP data")
+                        continue
+
+                    row = shap_snap.loc[ticker]
+                    vals = {g: row.get(g, 0) for g in groups}
+                    total_val = row.get("total", sum(vals.values()))
+
+                    # Sort by absolute contribution
+                    sorted_groups = sorted(vals.items(), key=lambda x: abs(x[1]), reverse=True)
+
+                    fig_wf = go.Figure(go.Waterfall(
+                        orientation="v",
+                        x=[g for g, _ in sorted_groups] + ["Total"],
+                        y=[v for _, v in sorted_groups] + [0],
+                        measure=["relative"] * len(sorted_groups) + ["total"],
+                        connector={"line": {"color": "rgba(63,63,63,0.3)"}},
+                        increasing={"marker": {"color": "#2ca02c"}},
+                        decreasing={"marker": {"color": "#d62728"}},
+                        totals={"marker": {"color": "#1f77b4"}},
+                        textposition="outside",
+                        text=[f"{v:+.3f}" for _, v in sorted_groups] + [f"{total_val:.3f}"],
+                        textfont={"size": 10},
+                    ))
+                    fig_wf.update_layout(
+                        title=f"{ticker} (z={total_val:.2f})",
+                        yaxis_title="SHAP Contribution",
+                        height=380, showlegend=False,
+                        margin=dict(t=40, b=20),
+                    )
+                    st.plotly_chart(fig_wf, use_container_width=True)
+
+            # --- SHAP history for selected stocks ---
+            if len(shap_dates) > 1 and sel_shap_tickers:
+                st.markdown("#### Factor Attribution Over Time")
+
+                sel_history_ticker = st.selectbox(
+                    "Stock for SHAP History", sel_shap_tickers, key="shap_history_ticker"
+                )
+
+                t_shap = shap_attr[shap_attr["ticker"] == sel_history_ticker].set_index("date")
+
+                if len(t_shap) > 0:
+                    fig_shap_ts = go.Figure()
+                    for g in groups:
+                        if g in t_shap.columns:
+                            fig_shap_ts.add_trace(go.Bar(
+                                x=t_shap.index, y=t_shap[g],
+                                name=g,
+                                marker_color=SHAP_GROUP_COLORS.get(g, "#7f7f7f"),
+                            ))
+                    if "total" in t_shap.columns:
+                        fig_shap_ts.add_trace(go.Scatter(
+                            x=t_shap.index, y=t_shap["total"],
+                            name="Total Score", mode="lines+markers",
+                            line=dict(color="black", width=2),
+                        ))
+                    fig_shap_ts.update_layout(
+                        barmode="relative",
+                        title=f"{sel_history_ticker} - Factor Contributions Over Time",
+                        yaxis_title="SHAP Value", height=420,
+                        hovermode="x unified",
+                    )
+                    st.plotly_chart(fig_shap_ts, use_container_width=True)
+
+            # --- All-stock SHAP heatmap for latest date ---
+            st.markdown("#### All-Stock Score Decomposition")
+            shap_latest = shap_attr[shap_attr["date"] == shap_dates[-1]].set_index("ticker")
+
+            if len(shap_latest) > 0:
+                hm_data = shap_latest[groups].copy()
+                hm_data = hm_data.sort_values(
+                    by=groups[0] if groups else hm_data.columns[0],
+                    key=lambda x: shap_latest.get("total", x),
+                    ascending=False,
+                )
+                if "total" in shap_latest.columns:
+                    hm_data = hm_data.loc[shap_latest["total"].sort_values(ascending=False).index]
+
+                fig_hm = go.Figure(data=go.Heatmap(
+                    z=hm_data.values,
+                    x=hm_data.columns.tolist(),
+                    y=hm_data.index.tolist(),
+                    colorscale="RdBu", zmid=0,
+                    text=np.char.mod("%.3f", hm_data.values),
+                    texttemplate="%{text}", textfont={"size": 9},
+                ))
+                fig_hm.update_layout(
+                    title=f"SHAP by Group ({shap_dates[-1].strftime('%Y-%m-%d')})",
+                    height=max(400, len(hm_data) * 22),
+                    yaxis_autorange="reversed",
+                    xaxis_side="top",
+                )
+                st.plotly_chart(fig_hm, use_container_width=True)
+        else:
+            st.info("No SHAP data for selected stocks.")
+    else:
+        st.warning("stock_shap_attribution.csv not found. Re-run pipeline to generate.")
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 def main():
@@ -697,6 +1017,7 @@ def main():
         "Overview": page_overview,
         "Returns Analysis": page_returns_analysis,
         "Portfolio": page_portfolio,
+        "Stock Score & Attribution": page_stock_score_attribution,
         "Sector & Style": page_sector_style,
         "Model & Signal": page_model_signal,
         "Regime & Explanations": page_regime,

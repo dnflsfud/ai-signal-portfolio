@@ -18,7 +18,7 @@ from typing import Optional, Dict, List
 
 RISK_AVERSION = 0.5       # Grid Search 최적
 TURNOVER_PENALTY = 0.3    # 턴오버 페널티
-MAX_TE_ANNUAL = 0.125     # TE 12.5% (BM=MCW)
+MAX_TE_ANNUAL = 0.175     # TE 17.5% (BM=MCW)
 MAX_SINGLE_TURNOVER = 0.15  # 리밸런싱당 턴오버 하드캡 복원
 SECTOR_DEVIATION = 0.20
 COV_LOOKBACK = 126

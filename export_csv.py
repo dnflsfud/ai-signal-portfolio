@@ -440,6 +440,34 @@ def export_style_sector_tilt(
     print(f"  [10] style_sector_tilt.csv ({len(df)} rebalances)")
 
 
+def export_stock_scores(result: BacktestResult, csv_dir: Path):
+    """12. 종목별 예측 스코어 (z-score) 시계열."""
+    if result.predictions is None or result.predictions.empty:
+        return
+    df = result.predictions.copy()
+    df.index.name = "date"
+    df = df.round(4)
+    df.to_csv(csv_dir / "stock_scores.csv")
+    print(f"  [12] stock_scores.csv ({len(df)} dates x {len(df.columns)} tickers)")
+
+
+def export_stock_shap_attribution(attribution: dict, csv_dir: Path):
+    """13. 종목별 SHAP 그룹 기여도 (raw, unweighted)."""
+    stock_shap = attribution.get("stock_shap_breakdown", {})
+    if not stock_shap:
+        return
+    rows = []
+    for date, ticker_data in sorted(stock_shap.items()):
+        for ticker, groups in ticker_data.items():
+            row = {"date": date, "ticker": ticker}
+            row.update(groups)
+            rows.append(row)
+    df = pd.DataFrame(rows)
+    df = df.round(4)
+    df.to_csv(csv_dir / "stock_shap_attribution.csv", index=False)
+    print(f"  [13] stock_shap_attribution.csv ({len(df)} rows)")
+
+
 def export_monthly_ow_explanations(
     result: BacktestResult,
     data: UniverseData,
@@ -740,6 +768,8 @@ def main():
     export_model_structure(result, csv_dir)
     export_monthly_regime(result, data, csv_dir)
     export_style_sector_tilt(result, data, csv_dir)
+    export_stock_scores(result, csv_dir)
+    export_stock_shap_attribution(attribution, csv_dir)
     export_monthly_ow_explanations(result, data, attribution, feature_groups, report_dir)
 
     print(f"\nAll CSVs saved to {csv_dir.resolve()}")
