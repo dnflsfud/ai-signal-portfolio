@@ -1,0 +1,5 @@
+embargo applied: True (embargo_days=20)
+oos cutoff applied: True (train_cutoff_date=2024-12-31)
+postfix LAST PREDICTION date: 2024-12-31
+postfix portfolio_returns last date (drift extends past cutoff): 2026-05-15
+legacy last predict date: 2026-05-15

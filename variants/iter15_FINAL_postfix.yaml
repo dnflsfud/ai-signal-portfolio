@@ -1,0 +1,19 @@
+label: iter15_FINAL_postfix
+description: >
+  iter15_65tkr_reb21_vtg + walk-forward embargo(=forward_horizon=20) +
+  OOS hold-out (train_cutoff_date=2024-12-31). New canonical baseline after
+  data-leakage-fix Task A. Compare against legacy iter15_65tkr_reb21_vtg
+  to quantify the leakage premium that was previously baked into IR=1.31.
+out_dir: outputs/iter15_FINAL_postfix
+tuning_mode: research
+overrides:
+  # Production overlay snapshot (kept identical to iter15_65tkr_reb21_vtg)
+  rebalance_freq: 21
+  value_trap_gate_enabled: true
+  vtg_pe_z_threshold: -0.5
+  vtg_momentum_threshold: -0.5
+  vtg_accel_threshold: 0.5
+  vtg_scale: 0.0
+  # Explicit pins (also DEFAULT_CONFIG values; recorded here for reproducibility)
+  train_cutoff_date: "2024-12-31"
+  embargo_days: 20

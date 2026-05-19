@@ -20,7 +20,9 @@
     {
       "step": 2,
       "name": "baseline-recompute",
-      "status": "pending"
+      "status": "completed",
+      "completed_at": "2026-05-19T11:25:00+0900",
+      "summary": "iter15_FINAL_postfix executed (research mode, cutoff=2024-12-31, embargo=20). Predictions stop at 2024-12-31 (verified); portfolio drifts to 2026-05-15. Cutoff-trimmed (same 1592 days) fair compare vs legacy iter15_65tkr_reb21_vtg: IR 0.804 -> 0.392 (Δ=-0.412), P1 0.844 -> 1.287 (Δ=+0.444), P2 0.783 -> -0.497 (Δ=-1.280, COLLAPSE), P3-trim 0.780 -> 0.390 (Δ=-0.389). Turnover 113.6%% -> 90.8%% (-22.8p). Avg IC essentially unchanged (0.045->0.046). DIAGNOSIS: ~half of legacy IR was label-leakage premium, concentrated in P2 (rate-hike regime). Pure model alpha on honest evaluation is IR≈0.39 with NEGATIVE P2."
     },
     {
       "step": 3,

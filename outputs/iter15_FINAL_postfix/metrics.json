@@ -1,0 +1,37 @@
+{
+  "label": "iter15_FINAL_postfix",
+  "tuning_mode": "research",
+  "manifest_path": "variants\\iter15_FINAL_postfix.yaml",
+  "overrides": {
+    "rebalance_freq": 21,
+    "value_trap_gate_enabled": true,
+    "vtg_pe_z_threshold": -0.5,
+    "vtg_momentum_threshold": -0.5,
+    "vtg_accel_threshold": 0.5,
+    "vtg_scale": 0.0,
+    "train_cutoff_date": "2024-12-31",
+    "embargo_days": 20
+  },
+  "metrics": {
+    "annual_return": 0.29123827414926184,
+    "annual_vol": 0.2244653678828694,
+    "sharpe_ratio": 1.297475316108612,
+    "active_return": 0.03420089078831756,
+    "tracking_error": 0.033629224165810837,
+    "information_ratio": 1.0169991023191047,
+    "max_drawdown": -0.29951108573263774,
+    "avg_annual_turnover": 0.9079791987033456,
+    "avg_annual_turnover_one_way": 0.4539895993516728,
+    "avg_ic": 0.046309400672164575,
+    "annual_tc": 0.0009079791987033457,
+    "spx_annual_return": 0.14474326464067677,
+    "spx_annual_vol": 0.1942079285671797,
+    "spx_sharpe": 0.7453004916357352,
+    "sub_periods": {
+      "P1_ir": 1.2874171561381251,
+      "P2_ir": -0.49684269956547095,
+      "P3_ir": 1.5325760395862054
+    }
+  },
+  "elapsed_sec": 194.2
+}
