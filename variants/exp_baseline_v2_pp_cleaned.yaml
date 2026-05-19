@@ -1,0 +1,11 @@
+label: exp_baseline_v2_pp_cleaned
+description: >
+  Phase 2.4 final (2026-04-21): baseline_v2 feature panel (63d single MA,
+  56 features, reversion_gated cleaner) + post-process overlays (PEAD,
+  growth_tilt) now go through get_cleaned_revision helper instead of raw
+  data.get_sheet. This is the Phase 2.4 cleanup minus the failed window
+  experiments (10d/21d/dual all lost IR). Candidate to replace baseline_v2.
+out_dir: outputs/exp_baseline_v2_pp_cleaned
+tuning_mode: production
+overrides:
+  rebalance_freq: 10

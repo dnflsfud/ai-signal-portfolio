@@ -1,0 +1,17 @@
+label: ablation_no_mega_funding
+description: >
+  Keep mega_cap_protection (asymmetric bounds) but disable the K=4 concentrated
+  funding mode. The k=4 + score_max=0.0 numbers were chosen from the
+  'MSFT/AVGO problem' diagnosis on full sample.
+out_dir: outputs/ablation/ablation_no_mega_funding
+tuning_mode: research
+overrides:
+  rebalance_freq: 21
+  embargo_days: 20
+  train_cutoff_date: "2024-12-31"
+  value_trap_gate_enabled: true
+  vtg_pe_z_threshold: -0.5
+  vtg_momentum_threshold: -0.5
+  vtg_accel_threshold: 0.5
+  vtg_scale: 0.0
+  mega_cap_funding_mode: false

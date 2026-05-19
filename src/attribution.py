@@ -23,6 +23,8 @@ from sklearn.linear_model import Ridge, LinearRegression
 from sklearn.decomposition import PCA
 from typing import Dict, List, Tuple, Optional
 
+from src.config import PipelineConfig, DEFAULT_CONFIG
+
 
 # ============================================================
 # 1. Shapley Value Decomposition
@@ -113,7 +115,10 @@ def compute_feature_exposure(
 # 2. Li et al. 3-Component Marginal Prediction Attribution
 # ============================================================
 
-N_GRID_POINTS = 30  # marginal prediction 계산용 grid point 수
+# ---------------------------------------------------------------------------
+# Backwards-compatible module-level alias (read from DEFAULT_CONFIG)
+# ---------------------------------------------------------------------------
+N_GRID_POINTS = DEFAULT_CONFIG.n_grid_points  # marginal prediction 계산용 grid point 수
 
 
 def _compute_marginal_prediction(
@@ -150,10 +155,13 @@ def _compute_marginal_prediction(
 
     grid_values = np.linspace(lo, hi, n_grid)
 
-    # 샘플 수 제한 (속도)
-    n_samples = min(len(X), 200)
+    # M6: 샘플 수 제한 (속도). Default (200) preserves backward-compat; larger
+    # universes can lift the cap via config.marginal_prediction_n_samples.
+    cap = getattr(DEFAULT_CONFIG, "marginal_prediction_n_samples", 200)
+    n_samples = min(len(X), int(cap))
     if n_samples < len(X):
-        idx = np.random.RandomState(42).choice(len(X), n_samples, replace=False)
+        _rng = np.random.RandomState(42)
+        idx = _rng.choice(len(X), n_samples, replace=False)
         X_sample = X[idx]
     else:
         X_sample = X
@@ -192,7 +200,7 @@ def _decompose_marginal(
 
     # OLS: y = slope * z
     z_sq = (z ** 2).sum()
-    if z_sq == 0:
+    if z_sq < 1e-10:
         return 0.0, np.var(y), 0.0
 
     slope = (z * y).sum() / z_sq
@@ -234,9 +242,9 @@ def li_three_component_attribution(
     y_hat = model.predict(X)
     total_var = np.var(y_hat)
 
-    if total_var == 0:
+    if total_var < 1e-10:
         return {
-            "linear_ratio": 0.33, "marginal_nl_ratio": 0.33, "interaction_ratio": 0.34,
+            "linear_ratio": np.nan, "marginal_nl_ratio": np.nan, "interaction_ratio": np.nan,
             "group_linear": {g: 0.0 for g in feature_groups},
             "group_marginal_nl": {g: 0.0 for g in feature_groups},
             "group_interaction": {g: 0.0 for g in feature_groups},
@@ -344,22 +352,27 @@ def build_macro_features(returns: pd.DataFrame, prices: pd.DataFrame) -> pd.Data
     macro["breadth_50d"] = (prices > ma50).sum(axis=1) / prices.shape[1]
 
     for w in [63, 126]:
-        roll_corr = returns.rolling(w, min_periods=w).corr()
+        # 메모리 효율적 avg correlation: 월별 샘플링
         avg_corrs = []
-        for date in returns.index:
-            if date in roll_corr.index.get_level_values(0):
-                try:
-                    corr_mat = roll_corr.loc[date]
-                    if isinstance(corr_mat, pd.DataFrame):
-                        mask = np.ones(corr_mat.shape, dtype=bool)
-                        np.fill_diagonal(mask, False)
-                        avg_corr = corr_mat.values[mask].mean()
-                        avg_corrs.append((date, avg_corr))
-                except:
-                    pass
+        sample_dates = returns.index[w::21]  # 21일마다 샘플
+        for date in sample_dates:
+            loc = returns.index.get_loc(date)
+            if loc < w:
+                continue
+            window_ret = returns.iloc[loc-w:loc].dropna(axis=1, how='all')
+            if window_ret.shape[1] < 3:
+                continue
+            corr_mat = window_ret.corr().values
+            mask = np.ones(corr_mat.shape, dtype=bool)
+            np.fill_diagonal(mask, False)
+            finite_vals = corr_mat[mask]
+            finite_vals = finite_vals[np.isfinite(finite_vals)]
+            if len(finite_vals) > 0:
+                avg_corrs.append((date, finite_vals.mean()))
         if avg_corrs:
             corr_series = pd.Series(dict(avg_corrs))
-            macro[f"avg_corr_{w}d"] = corr_series.reindex(returns.index)
+            # 샘플 간 보간
+            macro[f"avg_corr_{w}d"] = corr_series.reindex(returns.index).interpolate(method='linear')
 
     asset_light = [
         "MSFT", "GOOGL", "META", "PLTR", "CRM", "NFLX",
@@ -593,19 +606,30 @@ def run_attribution(
         model = models[m_date]
         print(f"[Attribution] 분석 중: {m_date.strftime('%Y-%m-%d')}")
 
+        # Each model may have been trained on a narrower EWMA-pruned feature
+        # set than `feature_names`. Respect the subset the model was actually
+        # fit on (stored as `_active_features` by walk_forward_train) so the
+        # SHAP / LGBM predict call sees the right shape.
+        model_features = getattr(model, "_active_features", None) or feature_names
+        model_fw = getattr(model, "_active_fw", None)
+
         mask = panel.index.get_level_values("date") == m_date
-        X_df = panel.loc[mask, feature_names]
+        X_df = panel.loc[mask, model_features]
         X = X_df.values
+        if model_fw is not None:
+            X = X * model_fw[np.newaxis, :]
         tickers = X_df.index.get_level_values("ticker").tolist()
 
         if len(X) == 0:
             continue
 
-        # --- SHAP values ---
-        shap_vals = compute_shap_values(model, X, feature_names)
+        # --- SHAP values (on the model's own feature subset) ---
+        shap_vals = compute_shap_values(model, X, model_features)
 
+        # NOTE: shap_vals has len(model_features) columns, not feature_names.
+        # All downstream SHAP-consuming code must index into model_features.
         # --- Group attribution (absolute SHAP) ---
-        group_contrib = feature_group_attribution(shap_vals, feature_names, feature_groups)
+        group_contrib = feature_group_attribution(shap_vals, model_features, feature_groups)
         results["group_contributions"][m_date] = group_contrib
 
         # --- Per-stock raw SHAP group breakdown (unweighted) ---
@@ -613,7 +637,7 @@ def run_attribution(
         for i, ticker in enumerate(tickers):
             stock_shap[ticker] = {}
             for group_name, group_features in feature_groups.items():
-                indices = [j for j, f in enumerate(feature_names) if f in group_features]
+                indices = [j for j, f in enumerate(model_features) if f in group_features]
                 if indices:
                     stock_shap[ticker][group_name] = float(shap_vals[i, indices].sum())
                 else:
@@ -624,7 +648,7 @@ def run_attribution(
         # --- Li et al. 3-Component Attribution ---
         try:
             li_detail = li_three_component_attribution(
-                model, X, feature_names, feature_groups,
+                model, X, model_features, feature_groups,
             )
             # 호환성: linear_ratios에 (linear, nonlinear) 형태로 저장
             results["linear_ratios"][m_date] = (
@@ -644,28 +668,37 @@ def run_attribution(
                 w_series = weights_history[closest]
                 w_array = np.array([w_series.get(t, 1.0/len(tickers)) for t in tickers])
                 port_decomp = portfolio_shap_decomposition(
-                    shap_vals, feature_names, feature_groups, tickers, w_array
+                    shap_vals, model_features, feature_groups, tickers, w_array
                 )
                 results["portfolio_decomposition"][m_date] = port_decomp
 
         # --- Feature importance ---
-        imp = compute_feature_importance(model, feature_names)
+        imp = compute_feature_importance(model, model_features)
         all_importance.append(imp)
 
-    # Average importance
+    # Average importance across sampled dates.
+    # Different retrains may have different active feature sets (EWMA pruning),
+    # so we outer-join the per-date importance Series; missing features become
+    # 0 before averaging.
     if all_importance:
-        results["feature_importance"] = pd.concat(all_importance, axis=1).mean(axis=1).sort_values(ascending=False)
+        imp_df = pd.concat(all_importance, axis=1)
+        results["feature_importance"] = imp_df.fillna(0.0).mean(axis=1).sort_values(ascending=False)
 
-    # Save last model's SHAP for visualization
+    # Save last model's SHAP for visualization (using ITS feature subset)
     if sample_dates:
-        last_model = models[sample_dates[-1]]
-        mask = panel.index.get_level_values("date") == sample_dates[-1]
-        X_last = panel.loc[mask, feature_names].values
+        last_m_date = sample_dates[-1]
+        last_model = models[last_m_date]
+        last_features = getattr(last_model, "_active_features", None) or feature_names
+        last_fw = getattr(last_model, "_active_fw", None)
+        mask = panel.index.get_level_values("date") == last_m_date
+        X_last = panel.loc[mask, last_features].values
+        if last_fw is not None:
+            X_last = X_last * last_fw[np.newaxis, :]
         if len(X_last) > 0:
             results["shap_values_sample"] = {
-                "values": compute_shap_values(last_model, X_last, feature_names),
+                "values": compute_shap_values(last_model, X_last, last_features),
                 "data": X_last,
-                "feature_names": feature_names,
+                "feature_names": last_features,
             }
 
     return results

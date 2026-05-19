@@ -1,0 +1,17 @@
+label: ablation_feature_mode_lean
+description: >
+  Replace hand-picked 'core' (61-feature whitelist, post-hoc selected from
+  full-sample importance) with 'lean' (~80 features, no post-hoc cherry pick).
+  Tests how much of IR depends on the whitelist being fitted to the data.
+out_dir: outputs/ablation/ablation_feature_mode_lean
+tuning_mode: research
+overrides:
+  rebalance_freq: 21
+  embargo_days: 20
+  train_cutoff_date: "2024-12-31"
+  value_trap_gate_enabled: true
+  vtg_pe_z_threshold: -0.5
+  vtg_momentum_threshold: -0.5
+  vtg_accel_threshold: 0.5
+  vtg_scale: 0.0
+  feature_mode: "lean"

@@ -1,0 +1,13 @@
+label: iter15_FINAL_reproduce
+description: >
+  Reproduce iter15_FINAL with the current (post-2026-04-20 cleanup) codebase
+  and the newly-added revision-clean infra left at its `down_only` baseline.
+  Used to establish that (a) the pipeline still reproduces the authoritative
+  baseline within numerical tolerance, and (b) the Phase 2.4 infra adds zero
+  behaviour drift when left at defaults.
+out_dir: outputs/iter15_FINAL_reproduce
+tuning_mode: production
+overrides:
+  rebalance_freq: 10
+  # revision_clean_mode / _threshold / _extreme_threshold / _reversion_ratio
+  # all left at DEFAULT_CONFIG (= "down_only"/15/50/0.5) — should match iter15.

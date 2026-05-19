@@ -1,0 +1,29 @@
+{
+  "passed": true,
+  "checks": [
+    {
+      "name": "Average IC",
+      "value": 0.0155,
+      "threshold": 0.015,
+      "passed": 1
+    },
+    {
+      "name": "Annual Turnover",
+      "value": 3.81,
+      "threshold": 4.0,
+      "passed": 1
+    },
+    {
+      "name": "Optimizer Fail Rate",
+      "value": 0.008,
+      "threshold": 0.1,
+      "passed": true
+    }
+  ],
+  "metrics_snapshot": {
+    "annual_return": 0.2929,
+    "sharpe_ratio": 1.35,
+    "information_ratio": 0.33,
+    "max_drawdown": -0.3305
+  }
+}

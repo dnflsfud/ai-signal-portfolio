@@ -33,6 +33,18 @@ base_round4src/
 # Claude internal
 .claude/
 
+# Outputs (large pickle/checkpoint files, iter artefacts)
+outputs/*.pkl
+outputs/**/*.pkl
+outputs/**/*.pkl.sig
+outputs/checkpoints/
+outputs/*.png
+outputs/**/*.png
+
+# But DO commit dashboard_data.pkl — small precomputed payload (~3MB) used
+# by streamlit_mobile.py. Build via scripts/build_dashboard_data.py.
+!outputs/baseline_v4/dashboard_data.pkl
+
 # Misc
 nul
 *.log

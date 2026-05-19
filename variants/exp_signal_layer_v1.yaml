@@ -1,0 +1,20 @@
+label: exp_signal_layer_v1
+description: >
+  Phase 2 signal-layer P2 fix (2026-04-22):
+    (1) MacroCross features (+5) — macro scalar × ticker-specific signal
+        products with genuine CS variation. Targets rate-shock P2 directly.
+        whitelist 56 → 61.
+    (2) Regime-weighted PCA — VIX z-score-conditioned sample weights on the
+        252d PCA fit. Same-regime obs w=1.0, other-regime w=0.3. Makes the
+        specific-return residual reflect the covariance structure of the
+        current regime rather than a time-averaged mixture.
+  Both toggles ON in this variant to stress-test the combined hypothesis;
+  if it beats baseline_v3 but we can't attribute the gain, we'll run the
+  single-toggle ablations next.
+out_dir: outputs/exp_signal_layer_v1
+tuning_mode: production
+overrides:
+  rebalance_freq: 10
+  regime_pca_weighted_enabled: true
+  regime_pca_vix_threshold: 0.5
+  regime_pca_offreg_weight: 0.3

@@ -1,0 +1,18 @@
+label: ablation_no_growth_tilt
+description: >
+  Disable growth/revision post-prediction tilt (boost_weight=0.25, EPS:Sales
+  50:50). The (50:50, weight=0.25) point was selected after grid testing
+  multiple combinations on the full sample — test whether the lift survives
+  OOS discipline.
+out_dir: outputs/ablation/ablation_no_growth_tilt
+tuning_mode: research
+overrides:
+  rebalance_freq: 21
+  embargo_days: 20
+  train_cutoff_date: "2024-12-31"
+  value_trap_gate_enabled: true
+  vtg_pe_z_threshold: -0.5
+  vtg_momentum_threshold: -0.5
+  vtg_accel_threshold: 0.5
+  vtg_scale: 0.0
+  growth_tilt_enabled: false

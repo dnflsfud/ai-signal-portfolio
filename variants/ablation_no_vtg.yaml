@@ -1,0 +1,12 @@
+label: ablation_no_vtg
+description: >
+  iter15_FINAL_postfix - value_trap_gate. Tests whether the empirically-fit
+  cheap/bad_mom/accel gate survives OOS discipline. Prior to leakage fix it
+  was credited with +0.2 P3 IR.
+out_dir: outputs/ablation/ablation_no_vtg
+tuning_mode: research
+overrides:
+  rebalance_freq: 21
+  embargo_days: 20
+  train_cutoff_date: "2024-12-31"
+  value_trap_gate_enabled: false

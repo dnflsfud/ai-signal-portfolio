@@ -1,0 +1,38 @@
+{
+  "label": "ablation_revision_down_only",
+  "tuning_mode": "research",
+  "manifest_path": "C:\\Users\\westl\\PycharmProjects\\pythonProject\\venv_vf_new\\machine\\re_study\\c2\\ai_signal_cc2_harness\\variants\\ablation_revision_down_only.yaml",
+  "overrides": {
+    "rebalance_freq": 21,
+    "embargo_days": 20,
+    "train_cutoff_date": "2024-12-31",
+    "value_trap_gate_enabled": true,
+    "vtg_pe_z_threshold": -0.5,
+    "vtg_momentum_threshold": -0.5,
+    "vtg_accel_threshold": 0.5,
+    "vtg_scale": 0.0,
+    "revision_clean_mode": "down_only"
+  },
+  "metrics": {
+    "annual_return": 0.3256802956173328,
+    "annual_vol": 0.22604664826474502,
+    "sharpe_ratio": 1.4407658689807123,
+    "active_return": 0.061704002683950154,
+    "tracking_error": 0.04522289280354903,
+    "information_ratio": 1.3644417430790212,
+    "max_drawdown": -0.2977583141420481,
+    "avg_annual_turnover": 0.9248110514442812,
+    "avg_annual_turnover_one_way": 0.4624055257221406,
+    "avg_ic": 0.050854174636987416,
+    "annual_tc": 0.0009248110514442812,
+    "spx_annual_return": 0.14474326464067677,
+    "spx_annual_vol": 0.1942079285671797,
+    "spx_sharpe": 0.7453004916357352,
+    "sub_periods": {
+      "P1_ir": 1.2792588187615896,
+      "P2_ir": 0.2904284511770384,
+      "P3_ir": 1.666844930991783
+    }
+  },
+  "elapsed_sec": 231.2
+}

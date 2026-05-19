@@ -1,0 +1,17 @@
+label: ablation_revision_down_only
+description: >
+  Roll back revision_clean_mode from reversion_gated (current production)
+  to down_only (iter15 original). reversion_gated was selected because it
+  beat down_only on the same OOS window — picking-the-winner bias.
+out_dir: outputs/ablation/ablation_revision_down_only
+tuning_mode: research
+overrides:
+  rebalance_freq: 21
+  embargo_days: 20
+  train_cutoff_date: "2024-12-31"
+  value_trap_gate_enabled: true
+  vtg_pe_z_threshold: -0.5
+  vtg_momentum_threshold: -0.5
+  vtg_accel_threshold: 0.5
+  vtg_scale: 0.0
+  revision_clean_mode: "down_only"

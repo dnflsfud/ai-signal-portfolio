@@ -1,0 +1,12 @@
+label: exp_signal_layer_macro_only
+description: >
+  Phase 2 ablation A (2026-04-22): MacroCross features ON, regime-PCA OFF.
+  Isolates the feature-side contribution to the P2 +0.303 / P1 -0.548
+  tradeoff observed in exp_signal_layer_v1. Reference for which side of
+  the combo to keep.
+out_dir: outputs/exp_signal_layer_macro_only
+tuning_mode: production
+overrides:
+  rebalance_freq: 10
+  macro_cross_enabled: true
+  regime_pca_weighted_enabled: false

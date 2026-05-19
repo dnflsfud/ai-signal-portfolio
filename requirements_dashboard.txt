@@ -1,0 +1,10 @@
+# Minimal runtime requirements for the cc2_harness Streamlit Cloud dashboard.
+# These are the only packages streamlit_mobile.py needs when consuming the
+# precomputed dashboard_data.pkl. (Heavy backtest deps like lightgbm / cvxpy
+# are NOT required at runtime — they were only used to build the pkl.)
+streamlit>=1.32
+pandas>=2.0
+numpy>=1.24
+plotly>=5.18
+openpyxl>=3.1
+matplotlib>=3.7

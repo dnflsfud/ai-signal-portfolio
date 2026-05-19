@@ -1,0 +1,15 @@
+label: exp_revision_ma_dual
+description: >
+  Phase 2.4 iter3 (2026-04-21): Dual-MA revision feature set. Feature panel
+  exposes BOTH short (10d) and long (63d) revision MAs so LightGBM tree
+  splits can select per-regime horizon. Whitelist expands 56 → 58 features
+  (EPS + Sales each add one extra MA column). Post-process overlays
+  (PEAD boost, growth_tilt) stay on 63d — they are slow/stable boost
+  layers; the 10d adaptability is delivered through the model's feature
+  split, not the overlay. Window-sweep history (10d/21d/63d single-MA
+  runs) all failed on IR; dual-MA is the hypothesis that a single horizon
+  cannot beat baseline_v2 because P1/P3 prefer opposite lookbacks.
+out_dir: outputs/exp_revision_ma_dual
+tuning_mode: production
+overrides:
+  rebalance_freq: 10
