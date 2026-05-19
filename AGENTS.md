@@ -19,11 +19,14 @@ Gradient Boosting 기반 비선형 시그널 결합 + Mean-Variance Optimization
 - matplotlib, plotly (시각화)
 
 ## 디렉토리 구조
-ai_signal_cc/
-├── AGENTS.md
+ai_signal_cc2_harness/
+├── AGENTS.md            # (본 문서) 설계 의도 + config 스냅샷
+├── CLAUDE.md            # AGENTS.md 와 동일 사본 (Claude Code 진입점)
 ├── data/
-│   └── RL_Universe_Data.xlsx
+│   ├── ai_signal_data.xlsx    # production 데이터 (config.py 기본값)
+│   └── RL_Universe_Data.xlsx  # 초기 ~15종목 데이터 (legacy, 단발 실험용)
 ├── src/
+│   ├── config.py        # SSOT — DEFAULT_CONFIG dataclass
 │   ├── data_loader.py
 │   ├── feature_engine.py
 │   ├── target_engine.py
@@ -31,15 +34,31 @@ ai_signal_cc/
 │   ├── portfolio_optimizer.py
 │   ├── attribution.py
 │   ├── backtest.py
+│   ├── harness.py       # variant override + sub-period IR
 │   └── utils.py
+├── variants/            # YAML variant manifests for run_variant.py
+├── scripts/             # 보조 스크립트 (build_dashboard_data.py)
 ├── outputs/
-└── main.py
+│   ├── baseline_v4/                  # 현 production (canonical run_dir)
+│   ├── iter15_65tkr_reb21_vtg/       # production variant 원본 (promote 전)
+│   ├── csv/                          # daily_update 산출 CSV
+│   └── reports/
+├── update_and_deploy.bat / .py   # 운영 entry-point (data check → backtest → dashboard build → deploy)
+├── run_variant.py       # YAML manifest로 variant 실행 (Stage 2 full backend)
+├── daily_update.py      # 증분 일간 업데이트 (Stage 2 incremental backend)
+├── streamlit_mobile.py  # cc2-dashboard repo로 sync되는 production 대시보드
+└── run_selection_bias.py  # Deflated Sharpe Ratio 검증 (Bailey & Lopez de Prado 2014)
 
 ## 데이터 사양
 
-### 원본 파일: data/RL_Universe_Data.xlsx
-- 기간: 2014.01 ~ 2026.02 (약 4,440 영업일)
-- 종목: 15개 (AAPL, MSFT, GOOGL, AMZN, META, NVDA, TSLA, PLTR, AVGO, MU, GEV, VRT, BE, LITE, 000660/SK Hynix)
+### 원본 파일: data/ai_signal_data.xlsx (production, config.py `data_path` 기본값)
+- 기간: 2014.01 ~ 2026.04 (약 3,200 영업일 / panel 기준)
+- 종목: 50~65개 (production 유니버스, REDESIGN I 이후 essential-sheet 교집합으로 JPM/GS 등 금융주 포함)
+- 초기 ~15종목 시안은 `data/RL_Universe_Data.xlsx` 에 보존 (legacy)
+- 정확한 ticker 리스트는 `src/data_loader.TICKERS` 참조
+
+#### Initial 15종목 (legacy 시안)
+AAPL, MSFT, GOOGL, AMZN, META, NVDA, TSLA, PLTR, AVGO, MU, GEV, VRT, BE, LITE, 000660 (SK Hynix)
 
 ### 시트 -> 피처 카테고리 매핑
 
@@ -118,7 +137,8 @@ ai_signal_cc/
 - Market regime: 21d EW return, 63d cross-sectional avg vol
 - Size bucket: is_mega_cap(rank>0.8), is_small(rank<0.3)
 
-최종 피처 수: 약 80~120개.
+최종 피처 수 (설계 시안): 약 80~120개.
+**실측 (production, feature_mode="core" + EWMA prune): 61개 / 7 그룹.** 자세한 분포는 아래 *Feature 61개 구성* 표 참조.
 
 ### Phase 3: 타겟 변수 (src/target_engine.py)
 20일 Specific Return = PCA 잔차 수익률.
@@ -137,37 +157,63 @@ look-ahead bias 방지: PCA fitting은 반드시 과거 데이터만.
 - 훈련: 3년(756일) rolling window
 - 재훈련: 3개월(63일)마다
 - Validation: 훈련 마지막 6개월
+- EWMA feature importance (alpha=0.3) 로 하위 5% 피처 drop, 최소 60개 유지
 
-LightGBM params:
-  learning_rate=0.05, num_leaves=31, max_depth=6,
-  min_child_samples=20, subsample=0.8, colsample_bytree=0.8,
-  reg_alpha=0.1, reg_lambda=1.0, n_estimators=500
+LightGBM params (src/config.py `lgbm_params` – 실제 실행값, 2026-04-13 V2 패턴):
+  learning_rate=0.02, num_leaves=31, max_depth=5,
+  min_child_samples=60, subsample=0.8, colsample_bytree=0.8,
+  reg_alpha=0.3, reg_lambda=2.0, n_estimators=800,
+  early_stopping_rounds=100, random_state=42
+
+> 원 설계(Pictet 기준)는 lr=0.05 / leaves=31 / depth=6 / n_est=500 이었으나,
+> REDESIGN D 튜닝을 거쳐 현재값으로 수렴 (이전 lr=0.008/leaves=63/depth=7/n_est=1500
+> 설정은 degenerate 모델 → 안정 수렴 위해 V2 패턴으로 재조정).
+> 재현은 항상 src/config.py `DEFAULT_CONFIG.lgbm_params` 를 기준.
 
 ### Phase 5: Walk-Forward 백테스트 (src/backtest.py)
-- train_window: 756일(3년)
-- retrain_freq: 63일(3개월)
+- train_window: 1260일 (5년, config.py 실제값 — 다중 레짐 커버리지)
+- retrain_freq: 63일 (3개월)
 - prediction_horizon: 20일
-- rebalance_freq: 5일(주간)
+- rebalance_freq: 21일 (월간, config.py 실제값 — REDESIGN R)
+- one_way_tc: 10bps
+
+> 원 설계는 주간(5일) 리밸런싱 / 3년(756일) 윈도우였으나,
+> turnover 제어 + 다중 레짐 커버를 위해 월간 21일 / 5년 윈도우로 조정 (iter6 baseline turnover 455% → ~225% 감소).
 
 ### Phase 6: 포트폴리오 최적화 (src/portfolio_optimizer.py)
 cvxpy Mean-Variance Optimization.
 
 목적함수: Maximize(E[r] @ w - lambda * risk - tc * turnover)
-- risk_aversion=1.0, turnover_penalty=0.005
-- risk = quad_form(w - bm_weights, cov_matrix)
-- turnover = norm1(w - prev_weights)
 
-제약: sum(w)=1, w>=0, w<=0.15, 섹터 +-10% vs EW benchmark
-Cov matrix: 126일 Ledoit-Wolf shrinkage
-벤치마크: 15종목 동일가중(1/15)
+config.py 실제값 (REDESIGN E + iter9 baseline):
+- risk_aversion = 1.0 (iter9 baseline — risk_aversion 0.5는 TE quad 제약 때문에 binding 안 되어 효과 無)
+- turnover_penalty = 0.03 (Pictet 0.005 대비 6배 — 적정 보수 모드)
+- max_te_annual = 0.045 (REDESIGN P — codex_v2 baseline 수준 4.5%로 alpha 공간 확보)
+- max_single_turnover = 0.15
+- cov_lookback = 126일 (Ledoit-Wolf shrinkage)
+- bm_weight_floor = 0.02 (UW 공간 확보)
+- max_active_share = 0.50 (post_init: portfolio_style="core_satellite" 시 2 × satellite_budget = 0.45로 자동 축소)
+
+제약 (config.py 실제값):
+- sum(w) = 1, w >= 0
+- w <= max_weight = 0.15 (15%)
+- |w - bm_w| <= max_active_per_stock = 0.12
+  (단, portfolio_style="core_satellite" 시 satellite_max_per_stock = 0.04로 자동 축소)
+- 섹터 편차 <= sector_deviation = ±0.10 (cap-weighted benchmark 기준)
+
+벤치마크: cap-weighted (CUR_MKT_CAP, REDESIGN A — EW 1/n에서 변경)
+
+> 원 설계는 EW 1/n 벤치마크 / Pictet turnover_penalty 0.005 였음.
+> EW는 mega-cap 비중 ~2%로 묶여 NVDA/MSFT 등에서 active room이 거의 없음 → cap-weighted로 전환.
+> REDESIGN E에서 이전 turnover_penalty 0.3 (Pictet 60배 보수)을 0.03으로 풀어 신호 반영도 회복.
 
 ### Phase 7: Attribution (src/attribution.py)
 - SHAP TreeExplainer
 - Feature group별 기여도 (Accounting, Price, Sellside, Conditioning)
 - 선형 vs 비선형 분해 (목표 ~50/50)
 
-### Phase 8: 시각화 (main.py)
-outputs/ 에 저장:
+### Phase 8: 시각화 (run_variant.py + scripts/build_dashboard_data.py)
+outputs/baseline_v4/ + outputs/csv/ 에 저장. 휴대폰 대시보드는 `streamlit_mobile.py`가 `dashboard_data.pkl`만 read.
 1. 누적 수익률 (전략 vs 벤치마크)
 2. Rolling IR (252일)
 3. Drawdown
@@ -180,26 +226,201 @@ outputs/ 에 저장:
 10. 재훈련 전후 상관 추이
 
 ## 실행 방법
-pip install pandas numpy scipy scikit-learn lightgbm cvxpy shap matplotlib plotly openpyxl
-python main.py --data_path ./data/RL_Universe_Data.xlsx --output_dir ./outputs/
 
-## 핵심 파라미터
-| 파라미터 | 값 | 근거 |
+```bash
+# 의존성 (requirements.txt 기준)
+pip install -r requirements.txt
+# 또는: pip install pandas numpy scipy scikit-learn lightgbm cvxpy shap matplotlib plotly openpyxl pyyaml
+
+# 1) 운영 entry-point (전체 흐름: backtest → dashboard build → cc2-dashboard repo로 push)
+update_and_deploy.bat                              # 더블클릭 = full mode (~3-4분)
+update_and_deploy.bat --mode incremental           # 가벼운 일간 갱신 (~30초~1분)
+# 상세: docs/UPDATE_AND_DEPLOY_FLOW.md
+
+# 2) Variant만 실행 (production = iter15_65tkr_reb21_vtg)
+python run_variant.py --variant variants/iter15_65tkr_reb21_vtg.yaml
+
+# 3) 일간 증분 업데이트 단독 호출 (update_and_deploy.bat --mode incremental와 동등)
+python daily_update.py --full-init    # 첫 실행 (전체 백테스트 + state 저장)
+python daily_update.py                # 이후: 새 가격만 처리
+
+# 4) Dashboard payload 빌드 (Stage 3 단독 호출)
+python scripts/build_dashboard_data.py --run outputs/baseline_v4 --data data/ai_signal_data.xlsx
+```
+
+## 핵심 파라미터 (src/config.py `DEFAULT_CONFIG` 기준 – 실제 실행값)
+
+### 프로덕션 구성 = **Core (feature_mode) + Core-Satellite + Score-Gate + Cap-Weighted BM** (2026-04 ~ )
+
+| 파라미터 | 값 | 의미 |
 |----------|-----|------|
+| **feature_mode** | **core** | 핵심 피처 화이트리스트 (feature_importance 기반 prune, 실측 panel 61개 피처 / 7개 그룹) |
+| **benchmark_type** | **cap_weighted** | 시가총액 가중 (REDESIGN A) |
+| **portfolio_style** | **core_satellite** | ~78% 코어 (BM 추적) + ~22% 새틀라이트 (active) |
+| satellite_budget | **0.225** | 일방향 active share 목표 (= L1/2) — iter9 baseline |
+| satellite_max_per_stock | **0.04** | 종목당 active tilt 상한 (±4%) — iter19 single-stock 리스크 제한 |
+| **enforce_score_gated_ow** | **True** | 모든 OW는 모델 신호 z>0 필요 — MVO diversification OW 차단 |
+| score_threshold_for_ow | 0.0 | 긍정 z-score 하한 (엄격화 원하면 +0.25~+0.50) |
+| max_active_share (L1) | **0.50** → post_init 후 **0.45** | = 2 × satellite_budget로 자동 축소 (`__post_init__`) |
+| max_active_per_stock | **0.12** → post_init 후 **0.04** | satellite_max_per_stock에 의해 자동 축소 |
+| max_weight | **0.15** | 종목당 절대 weight 상한 |
+| bm_weight_floor | **0.02** | bm의 2% 최소 유지 (UW 공간 확보) |
+| risk_aversion | **1.0** | iter9 baseline |
+| turnover_penalty | **0.03** | Pictet 원안(0.005)의 6배 (이전 0.3 대비 1/10로 완화) |
+| sector_deviation | **±0.10** | 섹터 중립에 가깝게 |
+| max_te_annual | **0.045** | REDESIGN P — codex_v2 baseline 4.5% |
+| no_trade_band | 0.003 | 30bp 미만 변화는 트레이드 스킵 (REDESIGN J) |
+| partial_rebalance_eta | 0.50 | 1회 리밸런싱당 목표 변화량 50% 만 집행 |
+| prediction_ema_alpha | **0.5** | 신호 EMA — REDESIGN R-9 (P2 회복: 0.8→0.5) |
 | 예측 타겟 | 20일 Specific Return | Pictet 기준 |
-| PCA 성분 수 | 5 | 15종목 기준 |
-| 훈련 기간 | 3년(756일) | 데이터 제약 |
-| 재훈련 주기 | 3개월(63일) | Pictet 기준 |
-| 리밸런싱 | 주간(5일) | Pictet 기준 |
-| Turnover Penalty | 0.005 | 3~4배 감속 |
-| 종목 상한 | 15% | 집중 방지 |
-| 섹터 편차 | +-10% | 공통 차원 헤지 |
+| PCA 성분 수 / 제거 | 5 / 2 | partial PCA residual (REDESIGN L) |
+| train_window | **1260일 (5년)** | 다중 레짐 커버리지 |
+| retrain_freq | 63일 (분기) | Pictet 기준 |
+| rebalance_freq | **21일 (월간)** | REDESIGN R — turnover 제어 (이전 10일에서 변경) |
+| one_way_tc | 10 bps | |
+| **embargo_days** | **20** | **data-leakage-fix (2026-05) — walk-forward train/val/predict 간 라벨 누수 차단** |
+| **enforce_oos_holdout** | **True** | **data-leakage-fix (2026-05) — research 모드에서 자동 적용** |
+| **train_cutoff_date** | **"2024-12-31"** | **data-leakage-fix (2026-05) — research 모드는 이 날짜까지만 학습/예측** |
 
-## 검증 체크리스트
-1. Look-ahead bias 없음
-2. 재훈련 전후 상관 ~0.95
-3. Feature importance: Price ~40%, Accounting ~20%, Sellside ~25%, Conditioning ~7-8%
-4. 선형/비선형 ~50/50
-5. IC > 0.03
-6. Long-Only IR >= 1.0
-7. 연간 Turnover 150~200%
+### Post-prediction 조정 모듈 (production ON)
+
+| 파라미터 | 값 | 의미 |
+|----------|-----|------|
+| pead_boost_enabled | True | Post-Earnings Announcement Drift 보너스 (decay 7일, 21일 cutoff) |
+| pead_boost_weight | 0.30 | 최대 boost (z-score 단위) |
+| growth_tilt_enabled | True | 성장/리비전 tilt (rev 50% / fundamental 50%, EPS:Sales 50:50) |
+| growth_tilt_weight | 0.25 | tilt boost (z-score 단위) |
+| mega_cap_protection_enabled | True | mega-cap (bm≥4%) 비대칭 active 제약 |
+| mega_cap_funding_mode | True | UW를 K=4개 worst-scoring mega-cap에 집중 |
+
+### Optional / OFF (default = False — 검증 후 promote 후보)
+
+| 파라미터 | 의미 |
+|----------|------|
+| regime_aware_pca_lookback | vol regime 기반 PCA lookback 동적 전환 |
+| regime_pca_weighted_enabled | regime conditional 가중 PCA fit |
+| multi_horizon_targets_enabled | 5d/20d/63d 멀티 horizon 타겟 앙상블 |
+| bm_proportional_cap_enabled | BM/vol 비례 active cap (mega_cap_protection 일반화) |
+| signal_stability_lambda | retrain간 score 변화 shrinkage |
+| value_trap_gate_enabled | (단, iter15_65tkr_reb21_vtg / baseline_v4 variant 에선 ON으로 override) |
+| enforce_oos_holdout | 튜닝 시 train_cutoff_date 이후 데이터 차단 |
+
+> **SSOT**: `src/config.py` 의 `DEFAULT_CONFIG`. 본 문서는 그 스냅샷이며, 충돌 시 config.py가 진실.
+> 실행 시마다 `outputs/experiment_manifest.json` 에 현재 config + git hash 스냅샷 저장.
+> Variant 실행은 `variants/<label>.yaml` 의 `overrides:` 가 DEFAULT_CONFIG 위에 적용됨 (`run_variant.py`).
+
+### Feature 61개 구성 / 7 그룹 (실측: outputs/csv/feature_importance.csv 기준)
+
+| 그룹 | 개수 | 비중 | 비고 |
+|---|---|---|---|
+| **Accounting** (Quality/Growth/Value) | 18 | 29.5% | oper_margin_chg_63d, cash_conversion_z, best_peg_ratio_level_z |
+| **Price** (Momentum/Risk) | 12 | 19.7% | momentum_252d, beta_63d, ma_cross_50_200, realized_vol_126d |
+| **Financials** (BS/CF) | 11 | 18.0% | REDESIGN I — JPM/GS 복원 시 추가된 essential-sheet 그룹 |
+| **Sellside** (Analyst/Revision) | 8 | 13.1% | analyst_rec_level, eps_rev_ma_63d, tg_mom_63d |
+| **Factor** (Macro) | 5 | 8.2% | fac_yield_slope, fac_F_Quality_mom_63d, fac_value_growth_63d |
+| **MacroCross** (interaction) | 5 | 8.2% | rate×rev, slope×rev, VIX×mom252, vol×mom63, DXY×rev (Phase 2, 2026-04-22) |
+| **Conditioning** (Regime) | 2 | 3.3% | earn_cycle_pos, regime_mkt_ret_21d |
+
+**합계: 61 features / 7 groups.**
+
+> 이전 핸드픽 46개 (Accounting 18 / Price 12 / Sellside 8 / Factor 5 / Conditioning 3) 디자인에
+> Phase 2 MacroCross 5개 + Financials 11개가 추가되어 현재 61개. `feature_mode="core"` 화이트리스트의
+> 실제 산출은 `src/feature_engine.build_all_features()` + EWMA prune (하위 5%, min 60유지) 결과로 결정됨.
+> 정확한 리스트는 `outputs/csv/feature_importance.csv` 참조.
+
+### 최종 성과 — 두 baseline 동시 노출 (2026-05-19 이후)
+
+> **research baseline** (canonical, embargo+cutoff 적용): `iter15_FINAL_postfix`
+> 출처: `outputs/iter15_FINAL_postfix/metrics.json` + `comparison.md` (2026-05-19).
+> 윈도우: 2018-11-26 → 2024-12-31 (1592일, cutoff-trimmed).
+>
+> | 지표 | research baseline | (참고) legacy deploy |
+> |---|---:|---:|
+> | Information Ratio | **0.392** | 1.310 (`baseline_v4`) |
+> | Active Return / yr | **+1.26%** | +4.28% |
+> | Tracking Error | 2.88% | 3.26% |
+> | Sharpe | 1.094 | 1.289 |
+> | P1 IR (2018-11~2021-05) | **+1.287** | +1.537 |
+> | P2 IR (2021-05~2023-10) | **−0.497** | +0.171 |
+> | P3 IR (cutoff-trimmed: 2023-10~2024-12) | **+0.390** | (1.911 full window) |
+> | Annual Turnover 2-way | 90.8% | 109.5% |
+> | Avg IC | 0.0463 | 0.0355 |
+> | 마지막 예측일 | 2024-12-31 | 2026-05-15 |
+>
+> **핵심 진단**: legacy IR 1.310 → 동일 cutoff-trimmed 윈도우의 legacy IR=0.804 → embargo
+> 추가 시 0.392. ΔIR=−0.412는 walk-forward 라벨 누수 프리미엄으로 추정. **P2가 양수에서
+> 음수로 전환** (+0.171 → −0.497). 즉 기존 P2 alpha의 대부분은 누수 효과였음.
+>
+> **legacy deploy baseline** (실배포용, `update_and_deploy.bat`이 참조): `iter15_65tkr_reb21_vtg`
+> / `outputs/baseline_v4/`. cutoff 무시. 실제 데일리 운영 경로는 그대로 유지되며,
+> 연구/promotion 결정만 새 research baseline 기준으로 진행한다.
+
+| 지표 | 값 | 비고 |
+|----------|-----|------|
+| **Annual Return** | **28.96%** | vs cap-weighted BM 24.68% |
+| **Active Return** | **+4.28% / yr** | vs cap-weighted BM |
+| **Annual Volatility** | 22.46% | (BM vol 19.48%) |
+| **Tracking Error** | **3.26%** | core-satellite + score-gate로 안정화 |
+| **Sharpe Ratio** | **1.29** | (BM Sharpe ≈ 0.71, SPX 0.71) |
+| **Information Ratio** | **1.31** | ✅ 목표 ≥ 1.0 달성 |
+| **Max Drawdown** | -29.95% | |
+| **Annual Turnover** | **109.5% (two-way) / 54.7% (one-way)** | rebal_freq=21 + no-trade band 30bps + partial η=0.50 |
+| **Avg IC** | **0.0355** | 신호 ranking 양호 |
+| **Sub-period P1 IR** | **+1.54** | 2018-11 ~ 2021-05 |
+| **Sub-period P2 IR** | **+0.17** | 2021-05 ~ 2023-10 (긴축 전환기 — 가장 약함) |
+| **Sub-period P3 IR** | **+1.91** | 2023-10 ~ 2026-04 (최근 OOS) |
+| **Sub-period Stability** | ✅ ALL POSITIVE | P2가 약하지만 음수 아님 |
+| 유니버스 | **65종목** | (이전 50종목에서 확장) |
+
+### Selection Bias 검증 (legacy environment — STALE 2026-05-19)
+
+> **⚠️ 아래 측정은 data-leakage-fix 이전(누수 환경)의 production strategy(`iter15_65tkr_reb21_vtg`)에서**
+> **이뤄진 것**이다. 새 research baseline (`iter15_FINAL_postfix`, IR=0.392)에 대한 DSR/Haircut
+> 재측정은 Task C step 2 (rolling-IR + SPA p-value 도입) 완료 후로 미룬다. 라벨 누수가
+> 제거된 IR=0.392는 N_trials=402 다중비교 보정 하에서 더더욱 통계적으로 미달이 명백하기에,
+> 평가 방식 자체를 (rolling 1년 IR 분포 + Hansen SPA) 갈아낀 뒤 단일 통계로 재판정한다.
+
+원본 측정값 (`run_selection_bias.py --auto --label iter15_65tkr_reb21_vtg`, 2026-04-30, 누수 환경):
+
+> **이전 자료 (`DSR=25.96`, `Haircut=0.078`, `Adjusted SR=0.585`, verdict=PASS) 는 단위 오류 결과이므로 폐기.**
+> Bailey-LdP DSR/Haircut 계산에서 `observed_SR`은 annualized인데 `sigma_SR`/`E_max_SR`/haircut은 daily scale로 섞여 있어 DSR이 약 √252 ≈ 15.9배 부풀려졌고 haircut은 같은 배수만큼 축소돼 있었음.
+> 본 항목은 단위 통일 후 (`run_selection_bias.py` 70-88, 133-155) 65종목 / IR 1.31 production pkl에서 다시 측정한 값.
+
+| 지표 | 값 | 판정 |
+|---|---|---|
+| Observed SR (annualized) | 1.299 | — |
+| **DSR** | **0.174 (p=0.4309)** | **FAIL** (p ≥ 0.05; SR이 N=402 다중비교 null의 expected max를 의미있게 넘지 못함) |
+| MinTRL | 1.6년 필요 vs 7.7년 보유 | SUFFICIENT |
+| **Grid Haircut** | **1.237** (annualized) | — |
+| **Adjusted SR** | **0.062** | PASS (margin 매우 작음) |
+| Late entrants | 0 | CLEAN |
+| Sub-period IR | P1 1.53 / P2 0.23 / P3 1.91 | STABLE (모두 양수) |
+| **Overall verdict** | **FAIL** | DSR p-value 미달 |
+
+**해석:** Haircut은 약식 (positive after haircut만 요구) 통과지만 DSR은 강한 검정에서 미달. 즉 production strategy의 `IR=1.31`은 N_trials=402 다중비교 보정 하에 통계적으로 유의하지 않을 수 있음. 다음 중 하나가 필요:
+1. N_trials 정의 재검토 (실제 distinct 후보 수가 402보다 작을 가능성 — 동일 axis의 grid 중복 제외)
+2. 더 긴 OOS 보유로 SR 안정성 입증
+3. 신호/포트폴리오 개선으로 SR 상향 (현재 1.30 → 목표 ~1.65 = 1.96-σ)
+
+**재산출 명령:**
+```bash
+python run_selection_bias.py --auto --label iter15_65tkr_reb21_vtg
+# 또는 explicit pkl path:
+python run_selection_bias.py --auto --pkl outputs/iter15_65tkr_reb21_vtg/backtest_result.pkl
+```
+fallback chain: top-level `outputs/backtest_result.pkl` → `iter15_65tkr_reb21_vtg/` → `baseline_v4/`.
+
+### 검증 체크리스트 (research baseline = iter15_FINAL_postfix 기준, 2026-05-19)
+1. ✅ **Look-ahead bias 없음** — backtest.py 실행 타이밍 + walk-forward embargo (data-leakage-fix Task A)
+2. ❌ **Selection bias gate** — legacy 환경 DSR FAIL 결과는 STALE. 새 baseline IR=0.392 기준 재측정은 Task C step 2 (rolling-IR + SPA) 도입 후
+3. ✅ **Score↔Position 일치** — 모든 OW는 z>0 종목 (score-gate 강제, `enforce_score_gated_ow=True`)
+4. ✅ **Core-Satellite 구조** — satellite_budget 0.225 → ~78% 코어 + ~22% 새틀라이트
+5. ✅ **TE 안정** — 2.88% (research) / 3.26% (legacy deploy)
+6. ⚠️ **Raw revision 노이즈 제거** — `clean_revision_spikes(mode="reversion_gated")` (Task B에서 ablation 예정 — `down_only` 대안 비교)
+7. ✅ **금융주 유니버스 복원** — JPM/GS essential-sheet 교집합 (REDESIGN I)
+8. ✅ **Turnover 제어** — research 90.8% two-way / legacy deploy 109.5%
+9. ❌ **Long-Only IR ≥ 1.0** — research baseline IR=0.392 (목표 미달; legacy 1.31은 누수 프리미엄 +0.41 포함). Task B/C 후 재평가
+10. ❌ **Sub-period ALL POSITIVE** — research P1=+1.29 / **P2=−0.50** / P3=+0.39 (cutoff). P2 음수 — 라벨 누수가 가리고 있던 진짜 P2 약점
+11. ⚠️ **Value-trap gate** — `value_trap_gate_enabled=True` 유지 (Task B step 0/1에서 ablation 검증 예정)
+12. ✅ **Walk-forward embargo** — `embargo_days=20` (= forward_horizon). train_end ~ val_start, val_end ~ predict 사이 20일 갭. data-leakage-fix Task A step 0
+13. ✅ **OOS hold-out 자동 강제** — research/oos_verify/deploy/production(deprecated) 모드. cutoff=2024-12-31. peek 카운터 `experiment_inventory.json.n_oos_peeks`로 회계. Task A step 1

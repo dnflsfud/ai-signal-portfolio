@@ -27,8 +27,11 @@
     {
       "step": 3,
       "name": "propagate-baseline-docs",
-      "status": "pending"
+      "status": "completed",
+      "completed_at": "2026-05-19T11:50:00+0900",
+      "summary": "docs/BASELINE.md: new top section 'Canonical Baseline (Research)' pointing to iter15_FINAL_postfix (IR=0.392) with gate criteria; legacy baseline_v4 block preserved under 'pre-leak-fix' heading. CLAUDE.md: 핵심 파라미터 표에 embargo_days/enforce_oos_holdout/train_cutoff_date 3개 추가, 최종 성과 박스가 research vs legacy deploy 동시 노출, Selection Bias 박스에 STALE 표기, 검증 체크리스트 항목 9/10 ❌/⚠️로 업데이트 + 항목 12/13(embargo/oos_holdout) 신규. docs/ROADMAP.md: Phase 2.6 COMPLETED 항목 + Phase 2 SUPERSEDED 표기. docs/AI_METHODOLOGY.md: §4에 라벨 누수 방지 단락 추가 (López de Prado 2018 인용). outputs/baseline_v4/README.md: deploy vs research baseline 구분 설명. AGENTS.md = CLAUDE.md 동기화 완료. variants/iter15_65tkr_reb21_vtg.yaml은 step3에서 미수정. Task A complete — Task B unblocked."
     }
   ],
+  "completed_at": "2026-05-19T11:50:00+0900",
   "created_at": "2026-05-19T09:59:26+0900"
 }
