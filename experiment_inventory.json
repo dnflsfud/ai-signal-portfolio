@@ -1,93 +1,6 @@
 {
   "description": "Conservative inventory of distinct strategy configurations that were backtested during the research phase of ai_signal_cc2_harness. Used by run_selection_bias.py --auto to pass a realistic N_trials into the Deflated Sharpe Ratio / Haircut calculation. Update this file whenever you run a new comparison / grid / experiment.",
-  "references": "Bailey & Lopez de Prado (2014) The Deflated Sharpe Ratio. N should count every distinct strategy configuration whose backtest was inspected, not just the single final choice.",
-  "scripts": [
-    {
-      "script": "grid_search.py",
-      "phase": "coarse",
-      "param_space": "risk_aversion(7) * turnover_penalty(5) * max_te_annual(1) * max_single_turnover(2) * sector_deviation(2)",
-      "trials": 140
-    },
-    {
-      "script": "grid_search.py",
-      "phase": "fine",
-      "param_space": "ra(5) * tp(5) * mst(3) * sd(3) centered on Phase 1 best (minus ~5 overlaps with coarse)",
-      "trials": 220
-    },
-    {
-      "script": "compare_improvements.py",
-      "phase": "pca x sector_interactions",
-      "param_space": "{A_Baseline, B_PartialPCA, C_SectorIX, D_Combined}",
-      "trials": 4
-    },
-    {
-      "script": "compare_pca.py",
-      "phase": "pca_n_remove sweep",
-      "param_space": "{5, 3, 2}",
-      "trials": 3
-    },
-    {
-      "script": "compare_max_weight.py",
-      "phase": "max_weight sweep",
-      "param_space": "[0.20, 0.25, 0.30, 0.35]",
-      "trials": 4
-    },
-    {
-      "script": "experiment_te_sensitivity.py",
-      "phase": "TE sensitivity",
-      "param_space": "te_values=[0.125, 0.15, 0.175, 0.20] iterated across multiple sub-experiments",
-      "trials": 8
-    },
-    {
-      "script": "experiment_monthly_rebal.py",
-      "phase": "monthly vs 10d rebalance",
-      "param_space": "{monthly, current}",
-      "trials": 2
-    },
-    {
-      "script": "manual_config_tuning",
-      "phase": "LightGBM hyperparameter tuning (lr, leaves, depth, child_samples, subsample, colsample, alpha, lambda, n_est)",
-      "param_space": "estimated from git log / memory - conservative lower bound",
-      "trials": 15
-    },
-    {
-      "script": "redesign_2026_04_ACDE",
-      "phase": "structural redesign: cap-weighted BM (A), lean feature set 239 (C), LightGBM stabilisation (D), optimiser re-tuning (E)",
-      "param_space": "single coordinated change set, not a grid",
-      "trials": 1
-    },
-    {
-      "script": "redesign_2026_04_11_growth_balance",
-      "phase": "C+ follow-up: restore multi-horizon EPS/Sales/FCF growth + add 17 growth composite features (new 'Growth' group) to balance Quality vs Growth style representation",
-      "param_space": "single coordinated change set, not a grid",
-      "trials": 1,
-      "result": "FAILED: IR 0.62 -> 0.23, rolled back to A+C+D+E"
-    },
-    {
-      "script": "redesign_2026_04_11_PM_core_satellite",
-      "phase": "F: reduce to 81 hand-picked core features + enable core-satellite portfolio style (max_active_share 0.40 L1, max_active_per_stock 0.06)",
-      "param_space": "single coordinated change set, not a grid",
-      "trials": 1
-    },
-    {
-      "script": "redesign_2026_04_11_PM_score_gated_ow",
-      "phase": "G: block OW on stocks with z-score < 0 (prevent MVO diversification quirk from overweighting negative signals)",
-      "param_space": "single coordinated change set, not a grid",
-      "trials": 1
-    },
-    {
-      "script": "redesign_2026_04_12_core_v2",
-      "phase": "H: further pruned core features 81 -> 46 based on feature_importance ranking from previous run",
-      "param_space": "single coordinated change set, not a grid",
-      "trials": 1
-    },
-    {
-      "script": "redesign_2026_04_12_financials_universe",
-      "phase": "I: restore JPM/GS by switching from all-sheet intersection to essential-sheet intersection. Optional sheets (FCF/CAPEX/EV_EBITDA) have NaN for banks, filled by per-date median. Universe 48 -> 50.",
-      "param_space": "single coordinated change set, not a grid",
-      "trials": 1
-    }
-  ],
+  "n_oos_peeks": 1,
   "n_trials_total": 402,
   "notes": [
     "396 is a conservative lower bound. Actual N is likely higher once",
@@ -95,5 +8,101 @@
     "If in doubt, pass a larger --n_trials to run_selection_bias.py.",
     "The DSR penalty grows as sqrt(2*ln N), so going from 1 to 396 multiplies",
     "the haircut by sqrt(2*ln(396)) ~ 3.45, not by 396 itself."
+  ],
+  "oos_peeks": [
+    {
+      "git_hash": "f5a67b8c377b2a6f154fdd844a7292abe83b34d7",
+      "label": "baseline_v5",
+      "manifest": "variants\\baseline_v5.yaml",
+      "timestamp_utc": "2026-05-19T05:27:56Z"
+    }
+  ],
+  "references": "Bailey & Lopez de Prado (2014) The Deflated Sharpe Ratio. N should count every distinct strategy configuration whose backtest was inspected, not just the single final choice.",
+  "scripts": [
+    {
+      "param_space": "risk_aversion(7) * turnover_penalty(5) * max_te_annual(1) * max_single_turnover(2) * sector_deviation(2)",
+      "phase": "coarse",
+      "script": "grid_search.py",
+      "trials": 140
+    },
+    {
+      "param_space": "ra(5) * tp(5) * mst(3) * sd(3) centered on Phase 1 best (minus ~5 overlaps with coarse)",
+      "phase": "fine",
+      "script": "grid_search.py",
+      "trials": 220
+    },
+    {
+      "param_space": "{A_Baseline, B_PartialPCA, C_SectorIX, D_Combined}",
+      "phase": "pca x sector_interactions",
+      "script": "compare_improvements.py",
+      "trials": 4
+    },
+    {
+      "param_space": "{5, 3, 2}",
+      "phase": "pca_n_remove sweep",
+      "script": "compare_pca.py",
+      "trials": 3
+    },
+    {
+      "param_space": "[0.20, 0.25, 0.30, 0.35]",
+      "phase": "max_weight sweep",
+      "script": "compare_max_weight.py",
+      "trials": 4
+    },
+    {
+      "param_space": "te_values=[0.125, 0.15, 0.175, 0.20] iterated across multiple sub-experiments",
+      "phase": "TE sensitivity",
+      "script": "experiment_te_sensitivity.py",
+      "trials": 8
+    },
+    {
+      "param_space": "{monthly, current}",
+      "phase": "monthly vs 10d rebalance",
+      "script": "experiment_monthly_rebal.py",
+      "trials": 2
+    },
+    {
+      "param_space": "estimated from git log / memory - conservative lower bound",
+      "phase": "LightGBM hyperparameter tuning (lr, leaves, depth, child_samples, subsample, colsample, alpha, lambda, n_est)",
+      "script": "manual_config_tuning",
+      "trials": 15
+    },
+    {
+      "param_space": "single coordinated change set, not a grid",
+      "phase": "structural redesign: cap-weighted BM (A), lean feature set 239 (C), LightGBM stabilisation (D), optimiser re-tuning (E)",
+      "script": "redesign_2026_04_ACDE",
+      "trials": 1
+    },
+    {
+      "param_space": "single coordinated change set, not a grid",
+      "phase": "C+ follow-up: restore multi-horizon EPS/Sales/FCF growth + add 17 growth composite features (new 'Growth' group) to balance Quality vs Growth style representation",
+      "result": "FAILED: IR 0.62 -> 0.23, rolled back to A+C+D+E",
+      "script": "redesign_2026_04_11_growth_balance",
+      "trials": 1
+    },
+    {
+      "param_space": "single coordinated change set, not a grid",
+      "phase": "F: reduce to 81 hand-picked core features + enable core-satellite portfolio style (max_active_share 0.40 L1, max_active_per_stock 0.06)",
+      "script": "redesign_2026_04_11_PM_core_satellite",
+      "trials": 1
+    },
+    {
+      "param_space": "single coordinated change set, not a grid",
+      "phase": "G: block OW on stocks with z-score < 0 (prevent MVO diversification quirk from overweighting negative signals)",
+      "script": "redesign_2026_04_11_PM_score_gated_ow",
+      "trials": 1
+    },
+    {
+      "param_space": "single coordinated change set, not a grid",
+      "phase": "H: further pruned core features 81 -> 46 based on feature_importance ranking from previous run",
+      "script": "redesign_2026_04_12_core_v2",
+      "trials": 1
+    },
+    {
+      "param_space": "single coordinated change set, not a grid",
+      "phase": "I: restore JPM/GS by switching from all-sheet intersection to essential-sheet intersection. Optional sheets (FCF/CAPEX/EV_EBITDA) have NaN for banks, filled by per-date median. Universe 48 -> 50.",
+      "script": "redesign_2026_04_12_financials_universe",
+      "trials": 1
+    }
   ]
 }

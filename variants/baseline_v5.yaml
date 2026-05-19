@@ -1,0 +1,26 @@
+label: baseline_v5
+description: >
+  Post-ablation production candidate. Single-knob promotion of
+  ablation_feature_mode_lean — the best in-cutoff measurement from Task B
+  (trimmed IR 0.898 vs research baseline 0.392). The only delta from
+  iter15_FINAL_postfix is feature_mode: 'lean'. The hand-picked 'core'
+  whitelist was post-hoc selected on full-sample feature importance under
+  the leaky environment and was found to be net-negative under honest
+  evaluation (see docs/ABLATION_REPORT.md). All other production overlays
+  (VTG, growth_tilt, PEAD, mega_cap_funding, reversion_gated revision
+  cleaning) are kept — Task B step 2's non-additivity caveat showed that
+  composing per-overlay DROP decisions degrades IR vs single-knob promotion.
+
+  This is the *single allowed* oos_verify peek for the baseline_v5 candidate.
+  experiment_inventory.json.n_oos_peeks will increment by 1.
+out_dir: outputs/baseline_v5
+tuning_mode: oos_verify
+overrides:
+  rebalance_freq: 21
+  embargo_days: 20
+  feature_mode: "lean"
+  value_trap_gate_enabled: true
+  vtg_pe_z_threshold: -0.5
+  vtg_momentum_threshold: -0.5
+  vtg_accel_threshold: 0.5
+  vtg_scale: 0.0
