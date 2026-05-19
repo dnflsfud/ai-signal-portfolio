@@ -1,0 +1,30 @@
+{
+  "project": "ai_signal_cc2_harness",
+  "phase": "data-leakage-fix",
+  "steps": [
+    {
+      "step": 0,
+      "name": "walk-forward-embargo",
+      "status": "completed",
+      "started_at": "2026-05-19T09:59:26+0900",
+      "completed_at": "2026-05-19T10:30:00+0900",
+      "summary": "embargo_days(=20) added to PipelineConfig with __post_init__ validation (raises on <0, warns on <forward_horizon). Extracted _compute_window_bounds helper in src/model_trainer.py; walk_forward_train now skips retrain when embargo collapses windows AND prev_model exists (reuses prev model), bootstraps on legacy windows only when no prev model. tests/test_model_trainer_embargo.py: 8/8 passing (5 bounds cases + 3 config cases). Smoke run deferred to step 2 baseline-recompute."
+    },
+    {
+      "step": 1,
+      "name": "oos-holdout-default",
+      "status": "pending"
+    },
+    {
+      "step": 2,
+      "name": "baseline-recompute",
+      "status": "pending"
+    },
+    {
+      "step": 3,
+      "name": "propagate-baseline-docs",
+      "status": "pending"
+    }
+  ],
+  "created_at": "2026-05-19T09:59:26+0900"
+}
