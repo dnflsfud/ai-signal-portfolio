@@ -1,0 +1,17 @@
+label: iter15_65tkr_reb21_vtg
+description: >
+  iter15_65tkr_reb21 + post-prediction value-trap gate. Zeroes score for
+  (cheap PE z<-0.5) & (momentum_252d<-0.5) & (oper_margin_accel>+0.5)
+  profile — empirically -0.25% / 20d specific return (hit 47.3%), -1.99%
+  in P3 regime. Does not touch panel/model, so split destabilization
+  risk seen in iter15_65tkr_reb21_sent is avoided.
+  Target: P3 IR improvement ≥ +0.2, P1/P2 preserved, turnover ≤ +5%p.
+out_dir: outputs/iter15_65tkr_reb21_vtg
+tuning_mode: deploy
+overrides:
+  rebalance_freq: 21
+  value_trap_gate_enabled: true
+  vtg_pe_z_threshold: -0.5
+  vtg_momentum_threshold: -0.5
+  vtg_accel_threshold: 0.5
+  vtg_scale: 0.0

@@ -1,0 +1,37 @@
+{
+  "project": "ai_signal_cc2_harness",
+  "phase": "data-leakage-fix",
+  "steps": [
+    {
+      "step": 0,
+      "name": "walk-forward-embargo",
+      "status": "completed",
+      "started_at": "2026-05-19T09:59:26+0900",
+      "completed_at": "2026-05-19T10:30:00+0900",
+      "summary": "embargo_days(=20) added to PipelineConfig with __post_init__ validation (raises on <0, warns on <forward_horizon). Extracted _compute_window_bounds helper in src/model_trainer.py; walk_forward_train now skips retrain when embargo collapses windows AND prev_model exists (reuses prev model), bootstraps on legacy windows only when no prev model. tests/test_model_trainer_embargo.py: 8/8 passing (5 bounds cases + 3 config cases). Smoke run deferred to step 2 baseline-recompute."
+    },
+    {
+      "step": 1,
+      "name": "oos-holdout-default",
+      "status": "completed",
+      "completed_at": "2026-05-19T10:55:00+0900",
+      "summary": "PipelineConfig defaults flipped: enforce_oos_holdout=True, train_cutoff_date='2024-12-31'. run_variant.py tuning_mode redefined as research/oos_verify/deploy with production+tuning as DEPRECATED aliases (DeprecationWarning + research semantics). Added _log_oos_peek (atomic append to experiment_inventory.json) and _log_deploy (outputs/deploy_log.txt). load_manifest injects _manifest_path; _summarize prints n_oos_peeks. Migrated 2 deploy manifests (iter15_65tkr_reb21_vtg, iter15_FINAL) from production->deploy; other 12 remain as production (deprecated, still work). tests/test_step1_ac.py: 6/6 passing. All embargo tests still 8/8."
+    },
+    {
+      "step": 2,
+      "name": "baseline-recompute",
+      "status": "completed",
+      "completed_at": "2026-05-19T11:25:00+0900",
+      "summary": "iter15_FINAL_postfix executed (research mode, cutoff=2024-12-31, embargo=20). Predictions stop at 2024-12-31 (verified); portfolio drifts to 2026-05-15. Cutoff-trimmed (same 1592 days) fair compare vs legacy iter15_65tkr_reb21_vtg: IR 0.804 -> 0.392 (Δ=-0.412), P1 0.844 -> 1.287 (Δ=+0.444), P2 0.783 -> -0.497 (Δ=-1.280, COLLAPSE), P3-trim 0.780 -> 0.390 (Δ=-0.389). Turnover 113.6%% -> 90.8%% (-22.8p). Avg IC essentially unchanged (0.045->0.046). DIAGNOSIS: ~half of legacy IR was label-leakage premium, concentrated in P2 (rate-hike regime). Pure model alpha on honest evaluation is IR≈0.39 with NEGATIVE P2."
+    },
+    {
+      "step": 3,
+      "name": "propagate-baseline-docs",
+      "status": "completed",
+      "completed_at": "2026-05-19T11:50:00+0900",
+      "summary": "docs/BASELINE.md: new top section 'Canonical Baseline (Research)' pointing to iter15_FINAL_postfix (IR=0.392) with gate criteria; legacy baseline_v4 block preserved under 'pre-leak-fix' heading. CLAUDE.md: 핵심 파라미터 표에 embargo_days/enforce_oos_holdout/train_cutoff_date 3개 추가, 최종 성과 박스가 research vs legacy deploy 동시 노출, Selection Bias 박스에 STALE 표기, 검증 체크리스트 항목 9/10 ❌/⚠️로 업데이트 + 항목 12/13(embargo/oos_holdout) 신규. docs/ROADMAP.md: Phase 2.6 COMPLETED 항목 + Phase 2 SUPERSEDED 표기. docs/AI_METHODOLOGY.md: §4에 라벨 누수 방지 단락 추가 (López de Prado 2018 인용). outputs/baseline_v4/README.md: deploy vs research baseline 구분 설명. AGENTS.md = CLAUDE.md 동기화 완료. variants/iter15_65tkr_reb21_vtg.yaml은 step3에서 미수정. Task A complete — Task B unblocked."
+    }
+  ],
+  "completed_at": "2026-05-19T11:50:00+0900",
+  "created_at": "2026-05-19T09:59:26+0900"
+}
