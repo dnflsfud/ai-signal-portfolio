@@ -2,7 +2,9 @@
   "project": "ai_signal_cc2_harness",
   "phase": "selection-bias-discipline",
   "steps": [
-    { "step": 0, "name": "checkpoint-fingerprint","status": "pending" },
+    { "step": 0, "name": "checkpoint-fingerprint","status": "completed",
+      "completed_at": "2026-05-19T14:55:00+0900",
+      "summary": "src/backtest.py adds compute_config_fingerprint(config) + FINGERPRINT_KEYS tuple (data_path, feature_mode, target params, lgbm_params, train/retrain/val windows, embargo_days, OOS holdout, EWMA params). save_checkpoint accepts optional config; load_checkpoint accepts optional config and discards cache on fingerprint mismatch (returns None). Legacy payloads without _fingerprint accepted with warning (backward compat). run_variant.py:342-344 passes cfg to load_checkpoint. tests/test_checkpoint_fingerprint.py: 13/13 passing (function stability, SAFE-key invariance, FINGERPRINT-key sensitivity, save/load roundtrip, legacy compat). No legacy outputs/checkpoints/ existed to archive." },
     { "step": 1, "name": "pca-target-scale",      "status": "pending" },
     { "step": 2, "name": "rolling-ir-eval",       "status": "pending" },
     { "step": 3, "name": "subperiod-deprecate",   "status": "pending" }

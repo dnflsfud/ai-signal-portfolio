@@ -339,9 +339,9 @@ def run(manifest_path: Path, no_cache: bool = False) -> int:
         cp1 = cp2 = cp4 = None
         print(f"[run_variant] cache DISABLED — {cache_disabled_reason}")
     else:
-        cp1 = load_checkpoint("phase1")
-        cp2 = load_checkpoint("phase2")
-        cp4 = load_checkpoint("phase4")
+        cp1 = load_checkpoint("phase1", config=cfg)
+        cp2 = load_checkpoint("phase2", config=cfg)
+        cp4 = load_checkpoint("phase4", config=cfg)
 
     if cp1 and cp2 and cp4:
         print("[run_variant] reusing Phase 1/2/4 checkpoints "

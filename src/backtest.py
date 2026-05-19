@@ -433,26 +433,89 @@ def _sign_file(path: Path) -> str:
 
 
 # ---------------------------------------------------------------------------
-# C-1: Checkpointing (HMAC signed)
+# Config fingerprint (selection-bias-discipline Task C step 0, 2026-05-19)
 # ---------------------------------------------------------------------------
-def save_checkpoint(phase: str, data: dict, output_dir: str = "./outputs"):
-    """Phase별 체크포인트 저장 (HMAC signed)."""
+# Keys that, if changed, INVALIDATE Phase 1/2/4 cached artifacts. Mirror of
+# what SAFE_FOR_CACHE_REUSE in run_variant.py declares as "fine to reuse" —
+# any field NOT in run_variant.py's SAFE set must appear here.
+FINGERPRINT_KEYS = (
+    "data_path",
+    "feature_mode",
+    "pca_components", "pca_n_remove", "pca_lookback", "forward_horizon",
+    "regime_aware_pca_lookback", "pca_lookback_short", "pca_lookback_long",
+    "regime_pca_weighted_enabled", "regime_pca_vix_threshold",
+    "regime_pca_offreg_weight", "regime_pca_min_effective_n",
+    "macro_cross_enabled",
+    "multi_horizon_targets_enabled", "multi_horizon_weights",
+    "revision_clean_mode", "revision_clean_threshold",
+    "revision_clean_extreme_threshold", "revision_clean_reversion_ratio",
+    "train_window", "retrain_freq", "val_window",
+    "embargo_days",
+    "enforce_oos_holdout", "train_cutoff_date",
+    "prediction_ema_alpha",
+    "lgbm_params",
+    "early_stopping_rounds",
+    "ewma_enabled", "ewma_alpha", "ewma_drop_pct", "ewma_min_features",
+    "ewma_min_retrains",
+)
+
+
+def compute_config_fingerprint(config) -> str:
+    """Stable 16-char SHA256 hex digest of the fingerprint-relevant config subset.
+
+    Returns identical hex for two configs that differ only in SAFE keys
+    (rebalance_freq, MVO knobs, post-prediction overlays). Returns different
+    hex for any change in FINGERPRINT_KEYS — those are the keys that bake
+    into Phase 1/2/4 cached artifacts.
+    """
+    from dataclasses import asdict
+    sub = {}
+    for k in FINGERPRINT_KEYS:
+        try:
+            sub[k] = asdict(config)[k]
+        except KeyError:
+            sub[k] = None
+    blob = json.dumps(sub, sort_keys=True, default=str)
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
+
+
+# ---------------------------------------------------------------------------
+# C-1: Checkpointing (HMAC signed + config fingerprint)
+# ---------------------------------------------------------------------------
+def save_checkpoint(phase: str, data: dict, output_dir: str = "./outputs",
+                    config=None):
+    """Phase별 체크포인트 저장 (HMAC signed + config fingerprint).
+
+    config 인자가 제공되면 payload에 `_fingerprint` 와 `_fingerprint_keys`
+    필드를 동봉한다. load_checkpoint가 config을 받으면 fingerprint mismatch
+    시 cache를 거부한다.
+    """
     _warn_default_key_once()
     cp_dir = Path(output_dir) / "checkpoints"
     cp_dir.mkdir(parents=True, exist_ok=True)
     path = cp_dir / f"checkpoint_{phase}.pkl"
+    payload = dict(data)
+    if config is not None:
+        payload["_fingerprint"] = compute_config_fingerprint(config)
+        payload["_fingerprint_keys_version"] = 1
+        payload["_saved_at"] = datetime.datetime.utcnow().isoformat(timespec="seconds") + "Z"
     with open(path, "wb") as f:
-        pickle.dump(data, f)
+        pickle.dump(payload, f)
     # Sign
     sig_path = path.with_suffix(".pkl.sig")
     sig_path.write_text(_sign_file(path))
     print(f"[Checkpoint] {phase} 저장 → {path}")
 
-def load_checkpoint(phase: str, output_dir: str = "./outputs"):
-    """Phase 체크포인트 로드 (HMAC verified).
+def load_checkpoint(phase: str, output_dir: str = "./outputs", config=None):
+    """Phase 체크포인트 로드 (HMAC verified + optional fingerprint check).
 
     Strict mode (PICKLE_HMAC_STRICT=1): sig file must exist, signature must match.
     Default mode: sig file missing → WARN and refuse (never silently loads).
+
+    If `config` is provided, computes the current fingerprint and compares to
+    the one stored in the payload. Mismatch → log warning + return None so the
+    caller regenerates. Legacy payloads without `_fingerprint` field are
+    accepted (backward compat with pre-fingerprint caches).
     """
     _warn_default_key_once()
     path = Path(output_dir) / "checkpoints" / f"checkpoint_{phase}.pkl"
@@ -471,6 +534,22 @@ def load_checkpoint(phase: str, output_dir: str = "./outputs"):
         raise RuntimeError(f"Checkpoint signature mismatch for {phase}! File may be tampered.")
     with open(path, "rb") as f:
         data = pickle.load(f)
+    # Fingerprint verification (selection-bias-discipline Task C step 0)
+    if config is not None:
+        expected_fp = compute_config_fingerprint(config)
+        actual_fp = data.get("_fingerprint") if isinstance(data, dict) else None
+        if actual_fp is not None and actual_fp != expected_fp:
+            logger.warning(
+                "[Checkpoint] %s fingerprint mismatch (saved=%s, current=%s) — discarding cache.",
+                phase, actual_fp, expected_fp,
+            )
+            return None
+        if actual_fp is None:
+            logger.warning(
+                "[Checkpoint] %s has no fingerprint (legacy pre-2026-05 payload); accepting "
+                "for backward compatibility. Re-run with --no-cache once to refresh.",
+                phase,
+            )
     print(f"[Checkpoint] {phase} 로드 ← {path}")
     return data
 
