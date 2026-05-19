@@ -442,6 +442,7 @@ FINGERPRINT_KEYS = (
     "data_path",
     "feature_mode",
     "pca_components", "pca_n_remove", "pca_lookback", "forward_horizon",
+    "pca_target_scale_mode",
     "regime_aware_pca_lookback", "pca_lookback_short", "pca_lookback_long",
     "regime_pca_weighted_enabled", "regime_pca_vix_threshold",
     "regime_pca_offreg_weight", "regime_pca_min_effective_n",
@@ -678,6 +679,19 @@ class BacktestResult:
             "avg_ic": avg_ic,
             "annual_tc": annual_tc,
         }
+
+        # selection-bias-discipline Task C step 2: rolling IR + SPA p-value.
+        # These are primary gating statistics under the new BASELINE.md policy
+        # (sub-period IRs are diagnostic only).
+        try:
+            from src.analytics import rolling_ir_stats, spa_pvalue
+            active = (port - bm.reindex(port.index).fillna(0.0)).dropna()
+            result.update(rolling_ir_stats(active, window=252))
+            result["spa_pvalue"] = spa_pvalue(
+                active, n_bootstrap=1000, block_size=10, seed=42,
+            )
+        except Exception as exc:
+            logger.warning("rolling_ir_stats / spa_pvalue failed: %r", exc)
 
         # S&P 500 metrics
         if len(self.spx_returns) > 0:

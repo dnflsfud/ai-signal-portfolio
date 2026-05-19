@@ -42,6 +42,18 @@ class PipelineConfig:
     forward_horizon: int = 20
 
     # ------------------------------------------------------------------
+    # PCA target scale mode (selection-bias-discipline Task C step 1, 2026-05)
+    # ------------------------------------------------------------------
+    # "raw"       — current default; specific_return is in 20d cumulative scale.
+    # "daily_eq"  — divides the residual by sqrt(forward_horizon) so it sits in
+    #               a daily-equivalent scale. Cross-sectional rank is unchanged
+    #               (the divisor is a constant per date), but the absolute
+    #               magnitude differs which CAN matter for downstream modules
+    #               that consume raw predictions (signal_stability shrinkage,
+    #               PEAD boost composition). A/B test under the same OOS.
+    pca_target_scale_mode: str = "raw"
+
+    # ------------------------------------------------------------------
     # Walk-forward label-leakage guard (data-leakage-fix, 2026-05)
     # ------------------------------------------------------------------
     # Embargo gap between walk-forward train_end ~ val_start and

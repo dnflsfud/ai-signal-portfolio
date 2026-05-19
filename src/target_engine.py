@@ -129,6 +129,10 @@ def compute_specific_returns(
 
         # Specific return = forward return - common component
         spec = fwd_t - common
+        # Optional daily-equivalent scale (selection-bias-discipline Task C step 1)
+        scale_mode = getattr(config, "pca_target_scale_mode", "raw")
+        if scale_mode == "daily_eq" and horizon > 0:
+            spec = spec / np.sqrt(horizon)
         specific_ret.iloc[t] = spec.flatten()
 
     # C7: emit a summary so silent failures surface in the log
@@ -263,7 +267,12 @@ def compute_specific_returns_regime_weighted(
         else:
             common = factors @ V.T
 
-        specific_ret.iloc[t] = centered_fwd - common
+        spec_row = centered_fwd - common
+        # Optional daily-equivalent scale (mirror of unweighted branch)
+        scale_mode = getattr(config, "pca_target_scale_mode", "raw")
+        if scale_mode == "daily_eq" and horizon > 0:
+            spec_row = spec_row / np.sqrt(horizon)
+        specific_ret.iloc[t] = spec_row
 
     level_fn = logger.warning if n_pca_failed > 0 else logger.info
     level_fn(

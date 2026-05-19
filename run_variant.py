@@ -223,6 +223,15 @@ def _summarize(metrics: Dict[str, Any], baseline_path: Path) -> None:
     print("=" * 60)
     if ir is not None:
         print(f"  IR          : {ir:.3f}")
+    # selection-bias-discipline Task C step 2: rolling IR + SPA p-value
+    ri_mean = metrics.get("rolling_ir_mean")
+    ri_min = metrics.get("rolling_ir_min")
+    ri_pos = metrics.get("rolling_ir_pos_frac")
+    if ri_mean is not None and ri_mean == ri_mean:  # not NaN
+        print(f"  Rolling IR  : mean={ri_mean:.3f}, min={ri_min:.3f}, pos_frac={ri_pos:.2f}")
+    spa = metrics.get("spa_pvalue")
+    if spa is not None and spa == spa:
+        print(f"  SPA p-value : {spa:.4f}  (H0: E[active] <= 0)")
     print(f"  Active ret  : {metrics.get('active_return', 0.0) * 100:.2f}%")
     print(f"  TE          : {metrics.get('tracking_error', 0.0) * 100:.2f}%")
     print(f"  Turnover    : {metrics.get('avg_annual_turnover', 0.0) * 100:.1f}%")

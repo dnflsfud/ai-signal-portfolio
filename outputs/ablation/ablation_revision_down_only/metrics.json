@@ -32,7 +32,14 @@
       "P1_ir": 1.2792588187615896,
       "P2_ir": 0.2904284511770384,
       "P3_ir": 1.666844930991783
-    }
+    },
+    "rolling_ir_mean": 0.9009318763534335,
+    "rolling_ir_median": 0.9755025681486746,
+    "rolling_ir_min": -1.3610985237848607,
+    "rolling_ir_max": 3.689101342265444,
+    "rolling_ir_pos_frac": 0.7739463601532567,
+    "rolling_ir_window": 252,
+    "spa_pvalue": 0.0
   },
-  "elapsed_sec": 231.2
+  "elapsed_sec": 201.2
 }
