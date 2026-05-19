@@ -1,0 +1,14 @@
+label: exp_signal_layer_regime_only
+description: >
+  Phase 2 ablation B (2026-04-22): regime-weighted PCA ON, MacroCross OFF.
+  Isolates the target-side contribution to the P2 +0.303 / P1 -0.548
+  tradeoff. Feature panel reverts to baseline_v3's 56 features; only the
+  specific-return target is regime-weighted.
+out_dir: outputs/exp_signal_layer_regime_only
+tuning_mode: production
+overrides:
+  rebalance_freq: 10
+  macro_cross_enabled: false
+  regime_pca_weighted_enabled: true
+  regime_pca_vix_threshold: 0.5
+  regime_pca_offreg_weight: 0.3

@@ -1,0 +1,12 @@
+label: iter15_65tkr_reb21_sent
+description: >
+  iter15_65tkr_reb21 + sentiment features (sent_momentum, sent_21d_accel)
+  added to CORE_FEATURE_WHITELIST. Hypothesis: sentiment lets GBM gate
+  margin_accel reversal signal when industry sentiment is deteriorating
+  (CRM-like value-trap guard). 2026-04-24 experiment.
+  Target: P3 IR improvement ≥ +0.3, P2 IR preserved or improved,
+  turnover delta ≤ +10%p.
+out_dir: outputs/iter15_65tkr_reb21_sent
+tuning_mode: production
+overrides:
+  rebalance_freq: 21

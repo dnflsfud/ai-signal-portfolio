@@ -1,0 +1,15 @@
+label: exp_revision_ma10d
+description: >
+  Phase 2.4 follow-up (2026-04-21): revision MA window 63d → 10d, and
+  all post-process overlays (PEAD boost, growth_tilt) now consume the
+  same cleaned (reversion_gated) revision stream as the feature panel.
+  Candidate to replace baseline_v2 if IR improves and P2 doesn't regress
+  further.
+out_dir: outputs/exp_revision_ma10d
+tuning_mode: production
+overrides:
+  rebalance_freq: 10
+  # revision_clean_mode is already "reversion_gated" in DEFAULT_CONFIG
+  # (promoted as baseline_v2 on 2026-04-21). Leaving other revision knobs
+  # at their DEFAULT_CONFIG values so this variant isolates the MA-window
+  # + post-process-cleaning change.

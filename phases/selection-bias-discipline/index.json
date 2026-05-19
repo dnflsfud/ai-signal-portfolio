@@ -1,0 +1,10 @@
+{
+  "project": "ai_signal_cc2_harness",
+  "phase": "selection-bias-discipline",
+  "steps": [
+    { "step": 0, "name": "checkpoint-fingerprint","status": "pending" },
+    { "step": 1, "name": "pca-target-scale",      "status": "pending" },
+    { "step": 2, "name": "rolling-ir-eval",       "status": "pending" },
+    { "step": 3, "name": "subperiod-deprecate",   "status": "pending" }
+  ]
+}

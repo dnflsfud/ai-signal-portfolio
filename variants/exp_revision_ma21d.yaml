@@ -1,0 +1,12 @@
+label: exp_revision_ma21d
+description: >
+  Phase 2.4 iter2 (2026-04-21): revision MA window 21d (sweet-spot between
+  10d and 63d). 10d attempt earlier today destroyed P1 IR (+1.658 → +0.902)
+  while gaining +0.315 P2 and +0.344 P3. 21d is the intermediate horizon
+  that tries to recover P1 while retaining most of the P2/P3 improvement.
+  All post-process overlays (PEAD, growth_tilt) + feature panel now use
+  the same 21d MA on cleaned (reversion_gated) revision data.
+out_dir: outputs/exp_revision_ma21d
+tuning_mode: production
+overrides:
+  rebalance_freq: 10

@@ -1,0 +1,35 @@
+{
+  "project": "ai_signal_cc2_harness",
+  "phase": "update-deploy-cleanup",
+  "started_at": "2026-05-15",
+  "steps": [
+    {
+      "step": 0,
+      "name": "audit-and-trace",
+      "status": "completed",
+      "completed_at": "2026-05-15",
+      "summary": "Wrote _research/bat_flow_trace.md (5-stage sequence + IO mapping + subprocess catalog) and _research/script_inventory.md (24 scripts catalogued: 19 root .py + 5 scripts/.py with tracked-status, line count, docstring, has_main, ref counts)."
+    },
+    {
+      "step": 1,
+      "name": "classify-and-propose",
+      "status": "completed",
+      "completed_at": "2026-05-15",
+      "summary": "Wrote _research/cleanup_proposal.md classifying 24 scripts as KEEP=7 / DELETE=18 / NEEDS_USER_DECISION=0 (after user chose 'DELETE all 4' for the entry-chain main/run_all/export_csv/streamlit_app). Plan-agent flagged run_selection_bias.py and streamlit_app.py as KEEP-traps; latter overridden by user decision."
+    },
+    {
+      "step": 2,
+      "name": "write-pipeline-doc",
+      "status": "completed",
+      "completed_at": "2026-05-15",
+      "summary": "Wrote docs/UPDATE_AND_DEPLOY_FLOW.md (~13 sections covering bat → 5-stage py orchestrator → run_variant/daily_update backends → src.backtest 8-phase → build_dashboard_data → cc2-dashboard repo deploy, with mermaid diagrams + IO mapping + daily ops workflow + troubleshooting). Verified no DELETE-candidate scripts referenced."
+    },
+    {
+      "step": 3,
+      "name": "apply-cleanup",
+      "status": "completed",
+      "completed_at": "2026-05-15",
+      "summary": "Removed 18 scripts (4 git rm: grid_search/main/run_all/export_csv, 14 rm of untracked: compare_*/experiment_*/feature_pnl/run_finalize/prepare_data/run_backtest_harness/streamlit_app + scripts/{compare_revision_variants,diagnose_revision_spikes,regen_csv_from_pkl,render_baseline_metrics}). Updated dead refs in CLAUDE.md, AGENTS.md, docs/ROADMAP.md, run_selection_bias.py, .claude/agents/{cc2-pipeline-operator,dashboard-publisher,backtester,selection-bias-checker}.md, .claude/skills/{cc2-run-backtest,cc2-iterate,cc2-iterate/references/eval_gates,backtesting,dashboard-publish}/, .agents/skills/{backtesting,dashboard-publish}/. Preserved experiment_inventory.json (audit trail). Smoke: update_and_deploy import OK; other imports fail only on missing venv deps (sklearn/scipy/yaml/plotly), not from cleanup."
+    }
+  ]
+}

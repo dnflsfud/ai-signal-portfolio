@@ -1,0 +1,10 @@
+label: iter15_65tkr_reb21
+description: >
+  iter15_FINAL with 65-ticker universe (2026-04-23 data refresh), rebalance_freq
+  restored to DEFAULT_CONFIG value (21d instead of iter15's 10d override).
+  Goal: cut two-way annual turnover from ~208% back to ~100% after universe
+  expansion added BAC/CSCO/INTC/ORCL/TSM. Uses cleaned DEFAULT_CONFIG otherwise.
+out_dir: outputs/iter15_65tkr_reb21
+tuning_mode: production
+overrides:
+  rebalance_freq: 21

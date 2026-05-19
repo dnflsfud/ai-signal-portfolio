@@ -1,0 +1,19 @@
+label: ablation_all_overlays_off
+description: >
+  Pure LightGBM signal + MVO. Disables VTG, growth_tilt, PEAD, mega_cap_funding,
+  bm_proportional cap. Reverts revision cleaning to down_only and uses lean
+  feature panel. The "honest baseline" — what does the alpha stack look like
+  without any of the post-hoc fitted overlays?
+out_dir: outputs/ablation/ablation_all_overlays_off
+tuning_mode: research
+overrides:
+  rebalance_freq: 21
+  embargo_days: 20
+  train_cutoff_date: "2024-12-31"
+  value_trap_gate_enabled: false
+  growth_tilt_enabled: false
+  pead_boost_enabled: false
+  mega_cap_funding_mode: false
+  mega_cap_protection_enabled: false
+  revision_clean_mode: "down_only"
+  feature_mode: "lean"

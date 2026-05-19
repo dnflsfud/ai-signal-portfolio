@@ -1,0 +1,17 @@
+label: ablation_no_pead
+description: >
+  Disable Post-Earnings Announcement Drift boost (weight=0.30, decay=7d,
+  cutoff=21d). Magic constants without OOS validation. Hypothesis: boost
+  is fitted to the same sample its parameters were tuned on.
+out_dir: outputs/ablation/ablation_no_pead
+tuning_mode: research
+overrides:
+  rebalance_freq: 21
+  embargo_days: 20
+  train_cutoff_date: "2024-12-31"
+  value_trap_gate_enabled: true
+  vtg_pe_z_threshold: -0.5
+  vtg_momentum_threshold: -0.5
+  vtg_accel_threshold: 0.5
+  vtg_scale: 0.0
+  pead_boost_enabled: false
