@@ -432,10 +432,15 @@ class PipelineConfig:
     # additional run that "peeks" at post-cutoff data inflates selection
     # bias and erodes the haircut-adjusted Sharpe. Without a hard gate the
     # discipline tends to slip — this makes it mechanical.
-    enforce_oos_holdout: bool = False        # off by default so existing
-                                              # iter15_FINAL reproduction is
-                                              # bitwise unchanged
-    train_cutoff_date: Optional[str] = None   # e.g. "2024-12-31" (inclusive)
+    # Default flipped to ON (data-leakage-fix Task A step 1, 2026-05).
+    # Any new variant without explicit override cannot learn/predict past the
+    # cutoff. tuning_mode in run_variant.py controls how this is applied:
+    #   research    → holdout ON (enforced)
+    #   oos_verify  → holdout OFF, recorded in experiment_inventory.n_oos_peeks
+    #   deploy      → holdout OFF, recorded in outputs/deploy_log.txt
+    #   production  → DEPRECATED alias for research (emits warning)
+    enforce_oos_holdout: bool = True
+    train_cutoff_date: Optional[str] = "2024-12-31"
 
     def __post_init__(self):
         """Apply portfolio_style overrides after dataclass init."""

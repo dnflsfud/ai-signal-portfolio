@@ -13,7 +13,9 @@
     {
       "step": 1,
       "name": "oos-holdout-default",
-      "status": "pending"
+      "status": "completed",
+      "completed_at": "2026-05-19T10:55:00+0900",
+      "summary": "PipelineConfig defaults flipped: enforce_oos_holdout=True, train_cutoff_date='2024-12-31'. run_variant.py tuning_mode redefined as research/oos_verify/deploy with production+tuning as DEPRECATED aliases (DeprecationWarning + research semantics). Added _log_oos_peek (atomic append to experiment_inventory.json) and _log_deploy (outputs/deploy_log.txt). load_manifest injects _manifest_path; _summarize prints n_oos_peeks. Migrated 2 deploy manifests (iter15_65tkr_reb21_vtg, iter15_FINAL) from production->deploy; other 12 remain as production (deprecated, still work). tests/test_step1_ac.py: 6/6 passing. All embargo tests still 8/8."
     },
     {
       "step": 2,
