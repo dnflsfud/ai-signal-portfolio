@@ -131,6 +131,18 @@ flowchart LR
 - 만약 전체 12년 데이터로 한 번에 학습하면 "2026년 데이터로 2018년을 예측" — fantasy.
 - 매 재학습 시점마다 **그 시점 이전 데이터만** 사용. 2018년 예측은 2018년 이전 데이터로만 학습한 모델이 만든다.
 
+### 성과 평가 정책 (selection-bias-discipline Task C step 3, 2026-05-19)
+
+1. **Primary**: IR, rolling IR 분포 (252d window: mean / min / pos_frac),
+   SPA p-value (Hansen 2005 simplified, block_size=10, n_iter=1000, seed=42).
+   - Source: `src/analytics.rolling_ir_stats`, `spa_pvalue`.
+   - 자동으로 `compute_metrics()`가 산출 → `metrics.json` 노출.
+   - Promotion gate: `docs/BASELINE.md` § "Gate criteria"의 1~5번 조건.
+2. **Diagnostic only**: P1/P2/P3 sub-period IRs (`src/harness.SUB_PERIODS`),
+   max drawdown, IC stability. Regime-by-regime 해석 용도. promotion gate 아님.
+3. **Anti-pattern**: 단일 sub-period IR을 promotion gate로 쓰는 것. 다중 비교
+   비용 증가 (3개 상관된 목표 ≈ N_trials × 3) → selection bias 확산.
+
 ### 라벨 누수 방지: walk-forward embargo (data-leakage-fix, 2026-05-19)
 타겟이 *20일 forward 수익률*이므로 train_end 직전 샘플의 라벨 윈도우(=20일)는
 val 구간으로, val_end 직전 샘플의 라벨 윈도우는 실제 예측 구간으로 자연스럽게

@@ -17,7 +17,8 @@
     },
     {
       "dir": "selection-bias-discipline",
-      "status": "pending"
+      "status": "completed",
+      "completed_at": "2026-05-19T15:55:00+0900"
     }
   ]
 }

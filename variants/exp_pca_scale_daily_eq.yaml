@@ -1,0 +1,18 @@
+label: exp_pca_scale_daily_eq
+description: >
+  A/B test of pca_target_scale_mode="daily_eq" vs "raw" (iter15_FINAL_postfix
+  baseline). Cross-sectional Z-score normalisation downstream should make this
+  neutral; if IR changes meaningfully, some downstream module (signal stability
+  shrinkage, PEAD composition, EMA blending) is sensitive to absolute residual
+  magnitude. selection-bias-discipline Task C step 1.
+out_dir: outputs/exp_pca_scale/daily_eq
+tuning_mode: research
+overrides:
+  rebalance_freq: 21
+  embargo_days: 20
+  value_trap_gate_enabled: true
+  vtg_pe_z_threshold: -0.5
+  vtg_momentum_threshold: -0.5
+  vtg_accel_threshold: 0.5
+  vtg_scale: 0.0
+  pca_target_scale_mode: "daily_eq"

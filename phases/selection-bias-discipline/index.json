@@ -2,9 +2,19 @@
   "project": "ai_signal_cc2_harness",
   "phase": "selection-bias-discipline",
   "steps": [
-    { "step": 0, "name": "checkpoint-fingerprint","status": "pending" },
-    { "step": 1, "name": "pca-target-scale",      "status": "pending" },
-    { "step": 2, "name": "rolling-ir-eval",       "status": "pending" },
-    { "step": 3, "name": "subperiod-deprecate",   "status": "pending" }
-  ]
+    { "step": 0, "name": "checkpoint-fingerprint","status": "completed",
+      "completed_at": "2026-05-19T14:55:00+0900",
+      "summary": "src/backtest.py adds compute_config_fingerprint(config) + FINGERPRINT_KEYS tuple (data_path, feature_mode, target params, lgbm_params, train/retrain/val windows, embargo_days, OOS holdout, EWMA params). save_checkpoint accepts optional config; load_checkpoint accepts optional config and discards cache on fingerprint mismatch (returns None). Legacy payloads without _fingerprint accepted with warning (backward compat). run_variant.py:342-344 passes cfg to load_checkpoint. tests/test_checkpoint_fingerprint.py: 13/13 passing (function stability, SAFE-key invariance, FINGERPRINT-key sensitivity, save/load roundtrip, legacy compat). No legacy outputs/checkpoints/ existed to archive." },
+    { "step": 1, "name": "pca-target-scale",      "status": "completed",
+      "completed_at": "2026-05-19T15:35:00+0900",
+      "summary": "Added pca_target_scale_mode field (default 'raw', option 'daily_eq'). Patched compute_specific_returns + compute_specific_returns_regime_weighted to divide residual by sqrt(forward_horizon) under daily_eq. Added to FINGERPRINT_KEYS. variants/exp_pca_scale_daily_eq.yaml A/B run: trim_IR 0.392 -> 0.820 (Δ +0.428!), full_IR 1.017 -> 0.734 (Δ -0.283), rolling_ir_mean 0.588 -> 0.846. |Δ trim_IR| >> 0.02 → downstream modules are HIGHLY sensitive to residual magnitude (likely signal_stability_lambda / PEAD / EMA blending). Step file's prohibition honored: default unchanged at 'raw'; daily_eq stays as a future-investigation lever. Filed as future work to isolate which downstream module is the leverage point. outputs/exp_pca_scale/comparison.md documents result." },
+    { "step": 2, "name": "rolling-ir-eval",       "status": "completed",
+      "completed_at": "2026-05-19T15:35:00+0900",
+      "summary": "src/analytics.py extended with rolling_ir, rolling_ir_stats, spa_pvalue (Hansen 2005 simplified single-strategy SPA, block_size=10, n_iter=1000, seed=42). compute_metrics() emits 7 new keys: rolling_ir_{mean,median,min,max,pos_frac,window} + spa_pvalue. run_variant.py _summarize prints rolling IR + SPA p-value lines. tests/test_analytics_rolling_spa.py: 9/9 (strong-alpha case for SPA gives p<0.05 reliably; zero-alpha case has median p~0.5 across 20 seeds). scripts/backfill_metrics.py back-filled 11 existing metrics.json files. Headline: iter15_FINAL_postfix rolling_ir_mean=0.588 SPA p=0.0010; baseline_v5 rolling_ir_mean=0.981 SPA p=0.0000." },
+    { "step": 3, "name": "subperiod-deprecate",   "status": "completed",
+      "completed_at": "2026-05-19T15:55:00+0900",
+      "summary": "src/harness.py SUB_PERIODS + sub_ir docstrings marked DEPRECATED for primary gating, retained for diagnostic. run_variant.py _summarize reorders output: PRIMARY (IR, Rolling IR mean/min/pos_frac, SPA p-value, Active ret, TE, Turnover) first; sub-period IR last under '[diagnostic]' label. docs/BASELINE.md gate criteria rewritten: Primary = 5 checks (IR, rolling_ir_pos_frac, rolling_ir_min, spa_pvalue, turnover); Sub-period IRs explicitly marked diagnostic-only. CLAUDE.md checklist items 10/11 demoted to ⚠️ with reference to new gate; items 14/15 added (single-statistic gate + checkpoint fingerprint). docs/AI_METHODOLOGY.md gains §성과 평가 정책 box. AGENTS.md re-synced with CLAUDE.md. All 3 Task C steps + entire phase complete."
+    }
+  ],
+  "completed_at": "2026-05-19T15:55:00+0900"
 }

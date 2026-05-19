@@ -40,24 +40,37 @@
 > previously-celebrated "P2 alpha" was the label leak. This is the empirical
 > answer to the structural review of 2026-05-18.
 >
-> ### Gate criteria for future variants
+> ### Gate criteria for future variants (2026-05-19 update — Task C step 3)
 >
-> A new variant promotes to canonical baseline only when, evaluated under
-> `tuning_mode: research` (cutoff enforced):
+> A new variant promotes to canonical research baseline only when, evaluated
+> under `tuning_mode: research` (cutoff enforced):
 >
-> 1. **IR ≥ current postfix IR (0.392) on the cutoff-trimmed window.**
-> 2. **P2 IR ≥ postfix P2 IR − 0.10** (i.e. ≥ −0.60). No regression on
->    the regime where leakage was hiding.
-> 3. **Turnover ≤ postfix turnover + 5 percentage points two-way.**
-> 4. Process: all tuning under `research`; final OOS verification uses
->    `tuning_mode: oos_verify` **exactly once** per candidate; the peek
->    counter (`experiment_inventory.json.n_oos_peeks`) goes up by 1.
-> 5. Statistical primary gate (rolling IR + SPA p-value) is introduced in
->    Task C step 2; until then, items 1-4 govern.
+> **Primary (must pass all):**
 >
-> Sub-period IRs (P1/P2/P3) remain **diagnostic only**; they are not
-> independently gated to avoid amplifying multiple-comparison cost. Drift in
-> any single sub-period is acceptable if the headline + P2 floor hold.
+> 1. **IR ≥ current research-baseline IR on the cutoff-trimmed window.**
+> 2. **`rolling_ir_pos_frac` ≥ current baseline − 0.05.** No regime where the
+>    strategy lost rolling-IR positivity for an extended stretch.
+> 3. **`rolling_ir_min` ≥ −0.20.** No 252d-window worse than that.
+> 4. **`spa_pvalue` ≤ 0.10** (one-sided H0: E[active] ≤ 0). Hansen (2005)
+>    simplified SPA on a block-bootstrap of daily active returns; see
+>    `src/analytics.spa_pvalue`.
+> 5. **Annual turnover (two-way) ≤ current baseline + 5 p.p.**
+>
+> **Secondary (diagnostic only — informs investigation, NOT gating):**
+>
+> - Sub-period IRs P1/P2/P3 (calendar windows from `src/harness.SUB_PERIODS`).
+>   No minimum threshold. Reported only for regime-by-regime inspection.
+>   Tuning to maximise these is an explicit anti-pattern — it amplifies
+>   multiple-comparison cost (three correlated targets ≈ N_trials × 3).
+> - Drawdown profile, IC stability, weight concentration histogram.
+>
+> **Process:**
+>
+> - All exploration uses `tuning_mode: research` (cutoff enforced).
+> - Final OOS verification uses `tuning_mode: oos_verify` **exactly once** per
+>   candidate; the peek counter `experiment_inventory.json.n_oos_peeks` goes
+>   up by 1.
+> - Promote only if `oos_verify` metrics also satisfy primaries (1)-(5).
 >
 > ### deploy vs research separation
 >

@@ -221,15 +221,27 @@ def _summarize(metrics: Dict[str, Any], baseline_path: Path) -> None:
     print("\n" + "=" * 60)
     print("  Variant summary")
     print("=" * 60)
+    # PRIMARY METRICS (selection-bias-discipline Task C step 3, 2026-05-19)
     if ir is not None:
-        print(f"  IR          : {ir:.3f}")
-    print(f"  Active ret  : {metrics.get('active_return', 0.0) * 100:.2f}%")
-    print(f"  TE          : {metrics.get('tracking_error', 0.0) * 100:.2f}%")
-    print(f"  Turnover    : {metrics.get('avg_annual_turnover', 0.0) * 100:.1f}%")
+        print(f"  IR              : {ir:.3f}")
+    ri_mean = metrics.get("rolling_ir_mean")
+    ri_min = metrics.get("rolling_ir_min")
+    ri_pos = metrics.get("rolling_ir_pos_frac")
+    if ri_mean is not None and ri_mean == ri_mean:
+        print(f"  Rolling IR (252d): mean={ri_mean:.3f}, min={ri_min:.3f}, pos_frac={ri_pos:.2f}")
+    spa = metrics.get("spa_pvalue")
+    if spa is not None and spa == spa:
+        print(f"  SPA p-value     : {spa:.4f}  (H0: E[active] <= 0)")
+    print(f"  Active return   : {metrics.get('active_return', 0.0) * 100:.2f}%")
+    print(f"  TE              : {metrics.get('tracking_error', 0.0) * 100:.2f}%")
+    print(f"  Turnover (2-way): {metrics.get('avg_annual_turnover', 0.0) * 100:.1f}%")
+    # DIAGNOSTIC ONLY — not a promotion gate.
     if sp:
-        print(f"  P1 IR       : {sp.get('P1_ir', float('nan')):.3f}")
-        print(f"  P2 IR       : {sp.get('P2_ir', float('nan')):.3f}")
-        print(f"  P3 IR       : {sp.get('P3_ir', float('nan')):.3f}")
+        print()
+        print("  [diagnostic] Sub-period IR (NOT a primary gate):")
+        print(f"    P1 IR         : {sp.get('P1_ir', float('nan')):.3f}")
+        print(f"    P2 IR         : {sp.get('P2_ir', float('nan')):.3f}")
+        print(f"    P3 IR         : {sp.get('P3_ir', float('nan')):.3f}")
 
     # OOS peek counter (data-leakage-fix Task A step 1)
     inv_path = Path("experiment_inventory.json")
@@ -339,9 +351,9 @@ def run(manifest_path: Path, no_cache: bool = False) -> int:
         cp1 = cp2 = cp4 = None
         print(f"[run_variant] cache DISABLED — {cache_disabled_reason}")
     else:
-        cp1 = load_checkpoint("phase1")
-        cp2 = load_checkpoint("phase2")
-        cp4 = load_checkpoint("phase4")
+        cp1 = load_checkpoint("phase1", config=cfg)
+        cp2 = load_checkpoint("phase2", config=cfg)
+        cp4 = load_checkpoint("phase4", config=cfg)
 
     if cp1 and cp2 and cp4:
         print("[run_variant] reusing Phase 1/2/4 checkpoints "

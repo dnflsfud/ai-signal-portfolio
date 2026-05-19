@@ -480,3 +480,96 @@ def compute_style_sector_tilt_rows(
         rows.append(row)
 
     return rows
+
+
+# ---------------------------------------------------------------------------
+# Performance evaluation primitives — rolling IR + SPA p-value
+# selection-bias-discipline Task C step 2 (2026-05-19)
+# ---------------------------------------------------------------------------
+
+def rolling_ir(active_returns: pd.Series, window: int = 252,
+               min_periods: int = 126) -> pd.Series:
+    """Rolling annualised information ratio.
+
+    IR_t = mean(active_{t-window+1..t}) / std(...) * sqrt(252)
+
+    Returns a Series indexed identically to `active_returns`. The first
+    `min_periods-1` dates yield NaN; dates where the rolling std is zero
+    also yield NaN.
+    """
+    a = active_returns.astype(float)
+    mu = a.rolling(window, min_periods=min_periods).mean()
+    sd = a.rolling(window, min_periods=min_periods).std(ddof=1)
+    sd_safe = sd.where(sd > 0)
+    return (mu / sd_safe) * np.sqrt(252)
+
+
+def rolling_ir_stats(active_returns: pd.Series, window: int = 252) -> dict:
+    """Summary statistics of the rolling-IR distribution.
+
+    Reported (all over the non-NaN rolling-IR series):
+      - rolling_ir_mean
+      - rolling_ir_median
+      - rolling_ir_min
+      - rolling_ir_max
+      - rolling_ir_pos_frac (share of dates with rolling_ir > 0)
+      - rolling_ir_window  (echo of the window arg, for provenance)
+    """
+    ri = rolling_ir(active_returns, window=window).dropna()
+    if len(ri) == 0:
+        return {
+            "rolling_ir_mean": float("nan"),
+            "rolling_ir_median": float("nan"),
+            "rolling_ir_min": float("nan"),
+            "rolling_ir_max": float("nan"),
+            "rolling_ir_pos_frac": float("nan"),
+            "rolling_ir_window": int(window),
+        }
+    return {
+        "rolling_ir_mean": float(ri.mean()),
+        "rolling_ir_median": float(ri.median()),
+        "rolling_ir_min": float(ri.min()),
+        "rolling_ir_max": float(ri.max()),
+        "rolling_ir_pos_frac": float((ri > 0).mean()),
+        "rolling_ir_window": int(window),
+    }
+
+
+def spa_pvalue(active_returns: pd.Series, n_bootstrap: int = 1000,
+               block_size: int = 10, seed: int = 42) -> float:
+    """Simplified Hansen (2005) SPA p-value for a single strategy.
+
+    Null hypothesis: E[active] ≤ 0 (strategy does not beat benchmark).
+    Test stat: t = sqrt(N) * mean / std (one-sided).
+    Bootstrap distribution from a stationary-block resample of the active
+    return series, centered to enforce the null on the resample. p-value =
+    fraction of bootstrap t-stats ≥ observed t-stat.
+
+    This is the single-strategy form. Multi-strategy SPA (which would also
+    adjust for N_trials over the candidate set) is out of scope here —
+    candidate-set adjustment is handled separately by `run_selection_bias.py`
+    (Bailey & López de Prado deflated Sharpe).
+    """
+    a = active_returns.astype(float).dropna().to_numpy()
+    n = len(a)
+    if n < 50 or a.std(ddof=1) == 0:
+        return float("nan")
+
+    observed_t = float(a.mean() / a.std(ddof=1) * np.sqrt(n))
+
+    rng = np.random.default_rng(seed)
+    # Center the resample distribution to enforce null mean = 0.
+    a0 = a - a.mean()
+    n_blocks = (n + block_size - 1) // block_size
+    max_start = max(1, n - block_size + 1)
+    boot_t = np.empty(n_bootstrap, dtype=float)
+    for i in range(n_bootstrap):
+        starts = rng.integers(0, max_start, size=n_blocks)
+        idx = np.concatenate([np.arange(s, s + block_size) for s in starts])
+        idx = idx[idx < n][:n]
+        sample = a0[idx]
+        sd = sample.std(ddof=1)
+        boot_t[i] = sample.mean() / sd * np.sqrt(n) if sd > 0 else 0.0
+
+    return float(np.mean(boot_t >= observed_t))
+
