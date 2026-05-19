@@ -420,7 +420,9 @@ fallback chain: top-level `outputs/backtest_result.pkl` → `iter15_65tkr_reb21_
 7. ✅ **금융주 유니버스 복원** — JPM/GS essential-sheet 교집합 (REDESIGN I)
 8. ✅ **Turnover 제어** — research 90.8% two-way / legacy deploy 109.5%
 9. ❌ **Long-Only IR ≥ 1.0** — research baseline IR=0.392 (목표 미달; legacy 1.31은 누수 프리미엄 +0.41 포함). Task B/C 후 재평가
-10. ❌ **Sub-period ALL POSITIVE** — research P1=+1.29 / **P2=−0.50** / P3=+0.39 (cutoff). P2 음수 — 라벨 누수가 가리고 있던 진짜 P2 약점
-11. ⚠️ **Value-trap gate** — `value_trap_gate_enabled=True` 유지 (Task B step 0/1에서 ablation 검증 예정)
+10. ⚠️ **Sub-period IR — diagnostic only (2026-05-19)** — research P1=+1.29 / P2=−0.50 / P3=+0.39 (cutoff). Sub-period IRs are NO LONGER promotion gates per Task C step 3; primary gate is rolling IR + SPA p-value (docs/BASELINE.md). Sub-period 수치는 regime inspection용으로만 유지
+11. ⚠️ **Value-trap gate** — `value_trap_gate_enabled=True` 유지. Task B ablation 결과 ΔIR=-0.046 CI=[-0.316, +0.186] (no gate evidence)
 12. ✅ **Walk-forward embargo** — `embargo_days=20` (= forward_horizon). train_end ~ val_start, val_end ~ predict 사이 20일 갭. data-leakage-fix Task A step 0
 13. ✅ **OOS hold-out 자동 강제** — research/oos_verify/deploy/production(deprecated) 모드. cutoff=2024-12-31. peek 카운터 `experiment_inventory.json.n_oos_peeks`로 회계. Task A step 1
+14. ✅ **Single-statistic primary gate (rolling IR + SPA)** — `src/analytics.rolling_ir_stats`, `spa_pvalue` (Hansen 2005 simplified). `compute_metrics`에 7개 신규 키. 다중-목표 fitting 방지. selection-bias-discipline Task C step 2
+15. ✅ **Checkpoint config fingerprint** — `src/backtest.compute_config_fingerprint`. Phase 1/2/4 캐시가 silent stale로 재사용되지 않도록 mismatch 시 자동 폐기. Task C step 0

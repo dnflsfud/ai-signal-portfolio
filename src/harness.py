@@ -22,7 +22,12 @@ from src.config import DEFAULT_CONFIG, PipelineConfig
 from src.backtest import run_backtest
 
 
-# Canonical P1/P2/P3 boundaries used by the iter reports.
+# DEPRECATED for primary gating (selection-bias-discipline Task C step 3,
+# 2026-05-19). P1/P2/P3 sub-period IRs remain as DIAGNOSTIC indicators only —
+# the canonical promotion gate is now rolling-IR distribution + SPA p-value
+# (see src/analytics.rolling_ir_stats/spa_pvalue and docs/BASELINE.md).
+# Tuning to maximise sub-period IRs is an explicit anti-pattern: it amplifies
+# multiple-comparison cost (three correlated targets ≈ N_trials × 3).
 SUB_PERIODS = {
     "P1": ("2018-11-23", "2021-05-11"),
     "P2": ("2021-05-12", "2023-10-27"),
@@ -32,6 +37,10 @@ SUB_PERIODS = {
 
 def sub_ir(port: pd.Series, bm: pd.Series, start: str, end: str) -> float:
     """Information ratio for an arbitrary date window.
+
+    DIAGNOSTIC ONLY (2026-05-19): primary gate is rolling_ir + SPA p-value.
+    Sub-period IRs remain available for regime-by-regime inspection, but
+    they are NOT used as promotion gates. See docs/BASELINE.md.
 
     Matches the _sub_ir implementation that run_iter20 / run_iter21_full /
     run_finalize_iter15 all independently re-implemented. Uses ddof=1 and

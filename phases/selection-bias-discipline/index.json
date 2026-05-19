@@ -11,6 +11,10 @@
     { "step": 2, "name": "rolling-ir-eval",       "status": "completed",
       "completed_at": "2026-05-19T15:35:00+0900",
       "summary": "src/analytics.py extended with rolling_ir, rolling_ir_stats, spa_pvalue (Hansen 2005 simplified single-strategy SPA, block_size=10, n_iter=1000, seed=42). compute_metrics() emits 7 new keys: rolling_ir_{mean,median,min,max,pos_frac,window} + spa_pvalue. run_variant.py _summarize prints rolling IR + SPA p-value lines. tests/test_analytics_rolling_spa.py: 9/9 (strong-alpha case for SPA gives p<0.05 reliably; zero-alpha case has median p~0.5 across 20 seeds). scripts/backfill_metrics.py back-filled 11 existing metrics.json files. Headline: iter15_FINAL_postfix rolling_ir_mean=0.588 SPA p=0.0010; baseline_v5 rolling_ir_mean=0.981 SPA p=0.0000." },
-    { "step": 3, "name": "subperiod-deprecate",   "status": "pending" }
-  ]
+    { "step": 3, "name": "subperiod-deprecate",   "status": "completed",
+      "completed_at": "2026-05-19T15:55:00+0900",
+      "summary": "src/harness.py SUB_PERIODS + sub_ir docstrings marked DEPRECATED for primary gating, retained for diagnostic. run_variant.py _summarize reorders output: PRIMARY (IR, Rolling IR mean/min/pos_frac, SPA p-value, Active ret, TE, Turnover) first; sub-period IR last under '[diagnostic]' label. docs/BASELINE.md gate criteria rewritten: Primary = 5 checks (IR, rolling_ir_pos_frac, rolling_ir_min, spa_pvalue, turnover); Sub-period IRs explicitly marked diagnostic-only. CLAUDE.md checklist items 10/11 demoted to ⚠️ with reference to new gate; items 14/15 added (single-statistic gate + checkpoint fingerprint). docs/AI_METHODOLOGY.md gains §성과 평가 정책 box. AGENTS.md re-synced with CLAUDE.md. All 3 Task C steps + entire phase complete."
+    }
+  ],
+  "completed_at": "2026-05-19T15:55:00+0900"
 }
