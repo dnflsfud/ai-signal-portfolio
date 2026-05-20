@@ -68,7 +68,7 @@ def apply_value_trap_gate(
     required = {"fin_pe_level_z", "momentum_252d", "oper_margin_accel"}
     missing = required - set(panel.columns)
     if missing:
-        print(f"[ValueTrapGate] SKIPPED — missing panel columns: {sorted(missing)}")
+        print(f"[ValueTrapGate] SKIPPED - missing panel columns: {sorted(missing)}")
         return predictions
 
     # Unstack to (date × ticker) wide frames aligned to predictions grid
@@ -541,7 +541,7 @@ def load_checkpoint(phase: str, output_dir: str = "./outputs", config=None):
         actual_fp = data.get("_fingerprint") if isinstance(data, dict) else None
         if actual_fp is not None and actual_fp != expected_fp:
             logger.warning(
-                "[Checkpoint] %s fingerprint mismatch (saved=%s, current=%s) — discarding cache.",
+                "[Checkpoint] %s fingerprint mismatch (saved=%s, current=%s) - discarding cache.",
                 phase, actual_fp, expected_fp,
             )
             return None

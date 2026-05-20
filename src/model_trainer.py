@@ -326,7 +326,7 @@ def walk_forward_train(
             mask_le_cutoff = all_dates <= cutoff_ts
             if mask_le_cutoff.any():
                 oos_cutoff_idx = int(np.where(mask_le_cutoff)[0][-1]) + 1
-                print(f"[WalkForward] OOS hold-out ACTIVE — predicting only "
+                print(f"[WalkForward] OOS hold-out ACTIVE - predicting only "
                       f"through {cutoff_str} (idx {oos_cutoff_idx}/{len(all_dates)}, "
                       f"reserving {len(all_dates) - oos_cutoff_idx} days)")
             else:
@@ -378,7 +378,7 @@ def walk_forward_train(
                 # > completeness.
                 print(f"[ModelTrainer] embargo skip @ {t_date.strftime('%Y-%m-%d')} "
                       f"(t_idx={t_idx}, embargo={embargo}, val_window={val_window}, "
-                      f"train_window={train_window}) — reusing prev model.")
+                      f"train_window={train_window}) - reusing prev model.")
                 last_train_idx = t_idx  # 다음 retrain 시점 갱신
                 do_retrain = False
 
@@ -388,7 +388,7 @@ def walk_forward_train(
                 # legacy (leaky) windows so the loop can start. Only hit when
                 # embargo + val_window > train_window at the first iteration.
                 print(f"[ModelTrainer] WARNING: embargo window collapse at "
-                      f"t_idx={t_idx} with no prev model — bootstrap on full window.")
+                      f"t_idx={t_idx} with no prev model - bootstrap on full window.")
                 train_start = max(0, t_idx - train_window)
                 train_end = t_idx - val_window
                 val_start = t_idx - val_window
