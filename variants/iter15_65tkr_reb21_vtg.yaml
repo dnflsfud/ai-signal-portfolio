@@ -10,6 +10,10 @@ out_dir: outputs/iter15_65tkr_reb21_vtg
 tuning_mode: deploy
 overrides:
   rebalance_freq: 21
+  # Pin "core" explicitly — DEFAULT_CONFIG.feature_mode was promoted to "lean"
+  # on 2026-05-20 (baseline_v5 rotation). This variant is the rollback target
+  # for the v5 deploy and must preserve the pre-rotation strategy.
+  feature_mode: "core"
   value_trap_gate_enabled: true
   vtg_pe_z_threshold: -0.5
   vtg_momentum_threshold: -0.5

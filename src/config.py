@@ -197,7 +197,7 @@ class PipelineConfig:
     # /Price/Sellside/Macro/Regime). Smaller panel reduces noise and training
     # instability; C+ growth balance experiment proved adding MORE features
     # without stronger base signal hurts IR.
-    feature_mode: str = "core"         # {"full", "lean", "core"}
+    feature_mode: str = "lean"         # {"full", "lean", "core"} — promoted to "lean" 2026-05-20 (baseline_v5). Legacy variants that need "core" must pin it explicitly in their overrides.
 
     # ------------------------------------------------------------------
     # Benchmark  — REDESIGN A (2026-04)

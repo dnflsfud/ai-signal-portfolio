@@ -9,6 +9,10 @@ tuning_mode: research
 overrides:
   # Production overlay snapshot (kept identical to iter15_65tkr_reb21_vtg)
   rebalance_freq: 21
+  # Pin "core" explicitly — DEFAULT_CONFIG.feature_mode promoted to "lean" on
+  # 2026-05-20 (baseline_v5). This historical research baseline must preserve
+  # the "core" whitelist used at measurement time for reproducibility.
+  feature_mode: "core"
   value_trap_gate_enabled: true
   vtg_pe_z_threshold: -0.5
   vtg_momentum_threshold: -0.5
