@@ -397,6 +397,24 @@ class PipelineConfig:
     one_way_tc: float = 0.0010
 
     # ------------------------------------------------------------------
+    # FX surcharge per ticker (fx-cost-modeling, 2026-05-21)
+    # ------------------------------------------------------------------
+    # Additional per-side TC for non-USD listed tickers, applied on top of
+    # one_way_tc. Models the KRW<->USD spot bid-ask + slippage that a
+    # USD-base portfolio incurs when entering / exiting KRX names. Charged
+    # per one-way turnover unit of the affected ticker. Round-trip cost =
+    # 2 * surcharge. Empirical KRW institutional flow: ~3 bp per side is
+    # the conservative-realistic mid-point (KRW spot ~1-3 bp + slippage
+    # 1-2 bp). Default ON with the two KRX names in the current universe;
+    # extend the dict to add more KRX tickers. Set to {} to disable.
+    fx_surcharge_per_ticker: Dict[str, float] = field(
+        default_factory=lambda: {
+            "000660": 0.0003,  # SK Hynix (KRX)
+            "005930": 0.0003,  # Samsung Electronics (KRX)
+        }
+    )
+
+    # ------------------------------------------------------------------
     # Signal stability penalty (2026-04-20, INFRA)
     # ------------------------------------------------------------------
     # Post-prediction shrinkage toward the previous retrain's predictions.
@@ -477,6 +495,21 @@ class PipelineConfig:
                 "label leak possible in walk-forward train/val/predict windows.",
                 stacklevel=2,
             )
+
+        # FX surcharge sanity: non-negative; warn on absurdly high (>100bp)
+        # values which usually indicate a units error (bp vs decimal).
+        for _tkr, _sur in self.fx_surcharge_per_ticker.items():
+            if _sur < 0:
+                raise ValueError(
+                    f"fx_surcharge_per_ticker[{_tkr!r}]={_sur} must be >= 0"
+                )
+            if _sur > 0.01:
+                import warnings
+                warnings.warn(
+                    f"fx_surcharge_per_ticker[{_tkr!r}]={_sur} > 100bp - "
+                    "unusually high; verify empirical justification.",
+                    stacklevel=2,
+                )
 
     # ------------------------------------------------------------------
     # Attribution

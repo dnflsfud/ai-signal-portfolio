@@ -67,7 +67,9 @@ class TestFingerprintFunction:
     def test_changes_on_feature_mode(self):
         c = PipelineConfig()
         fp = compute_config_fingerprint(c)
-        c2 = dataclasses.replace(c, feature_mode="lean")
+        # baseline_v5 promotion (2026-05-20) flipped DEFAULT to "lean", so
+        # change to the now-off-default "core" to exercise the comparison.
+        c2 = dataclasses.replace(c, feature_mode="core")
         assert compute_config_fingerprint(c2) != fp
 
     def test_fingerprint_is_short_hex(self):

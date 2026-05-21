@@ -1,0 +1,29 @@
+{
+  "project": "ai_signal_cc2_harness",
+  "phase": "fx-cost-modeling",
+  "created_at": "2026-05-21T10:00:00+0900",
+  "completed_at": "2026-05-21T10:55:00+0900",
+  "steps": [
+    {
+      "step": 0,
+      "name": "config-fx-surcharge",
+      "status": "completed",
+      "completed_at": "2026-05-21T10:10:00+0900",
+      "summary": "PipelineConfig.fx_surcharge_per_ticker: Dict[str, float] added with default_factory={'000660': 0.0003, '005930': 0.0003}. __post_init__ rejects negative values (ValueError) and warns on >100bp (UserWarning). All AC pass."
+    },
+    {
+      "step": 1,
+      "name": "wire-tc-vectorized",
+      "status": "completed",
+      "completed_at": "2026-05-21T10:30:00+0900",
+      "summary": "src/backtest.py walk-forward TC vectorized per-ticker (tc_per_ticker = one_way_tc + fx_vec[t]); falls back to scalar `turnover * one_way_tc` when fx_surcharge_per_ticker is empty (backward-compat). BacktestResult.tc_costs Series populated daily; compute_metrics annual_tc uses accumulated TC with legacy fallback. run_backtest propagates sim_result.tc_costs. Pre-existing test_changes_on_feature_mode updated (DEFAULT is now 'lean', test switches to 'core'). 36/36 tests pass."
+    },
+    {
+      "step": 2,
+      "name": "validate-and-docs",
+      "status": "completed",
+      "completed_at": "2026-05-21T10:55:00+0900",
+      "summary": "tests/test_fx_surcharge.py: 8/8 passing (config validation + vector math + metric accumulation + legacy fallback). Re-ran baseline_v5_deploy --no-cache: annual_tc +1.7bp/yr (0.001103 -> 0.001120), active_return -1.8bp/yr (0.04107 -> 0.04106), IR -0.0006 (1.2990 -> 1.2984), Sharpe -0.0001 (1.3712 -> 1.3711). Turnover/IC/SPA unchanged. Docs updated: CLAUDE.md + AGENTS.md core-parameter table now lists fx_surcharge_per_ticker; docs/AI_METHODOLOGY.md §7 adds TC model section with code path; docs/BASELINE.md adds 2026-05-21 update block. All acceptance criteria met."
+    }
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "label": "baseline_v5_deploy",
+  "tuning_mode": "deploy",
+  "manifest_path": "variants\\baseline_v5_deploy.yaml",
+  "overrides": {
+    "rebalance_freq": 21,
+    "embargo_days": 20,
+    "feature_mode": "lean",
+    "value_trap_gate_enabled": true,
+    "vtg_pe_z_threshold": -0.5,
+    "vtg_momentum_threshold": -0.5,
+    "vtg_accel_threshold": 0.5,
+    "vtg_scale": 0.0
+  },
+  "metrics": {
+    "annual_return": 0.3012203375732767,
+    "annual_vol": 0.2196938796744362,
+    "sharpe_ratio": 1.371091165669496,
+    "active_return": 0.04105526960213002,
+    "tracking_error": 0.031619411079798196,
+    "information_ratio": 1.2984198060652825,
+    "max_drawdown": -0.29235378355217156,
+    "avg_annual_turnover": 1.1030886345044533,
+    "avg_annual_turnover_one_way": 0.5515443172522266,
+    "avg_ic": 0.047849048595462546,
+    "annual_tc": 0.001120143789260528,
+    "rolling_ir_mean": 0.980321777518065,
+    "rolling_ir_median": 1.0547301330474192,
+    "rolling_ir_min": -2.035118542077727,
+    "rolling_ir_max": 3.5581629756466167,
+    "rolling_ir_pos_frac": 0.8149972632731254,
+    "rolling_ir_window": 252,
+    "spa_pvalue": 0.0,
+    "spx_annual_return": 0.14474326464067677,
+    "spx_annual_vol": 0.1942079285671797,
+    "spx_sharpe": 0.7453004916357352,
+    "sub_periods": {
+      "P1_ir": 0.7684414808364828,
+      "P2_ir": 1.1598152967881208,
+      "P3_ir": 1.6686037587629943
+    }
+  },
+  "elapsed_sec": 511.4
+}

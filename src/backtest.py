@@ -590,6 +590,11 @@ class BacktestResult:
         self.benchmark_returns: pd.Series = pd.Series(dtype=float)
         self.spx_returns: pd.Series = pd.Series(dtype=float)
         self.turnover: pd.Series = pd.Series(dtype=float)
+        # fx-cost-modeling step 1: actual TC paid each rebalance day (vector-
+        # summed per-ticker rate). Used by compute_metrics annual_tc as
+        # preferred source over `turnover * ONE_WAY_TC` scalar approximation.
+        # Empty for legacy pkls loaded without this field (fallback path).
+        self.tc_costs: pd.Series = pd.Series(dtype=float)
         self.predictions: Optional[pd.DataFrame] = None
         self.raw_predictions: Optional[pd.DataFrame] = None
         self.targets: Optional[pd.DataFrame] = None
@@ -663,8 +668,16 @@ class BacktestResult:
         # IC
         avg_ic = self.ic_series.mean() if len(self.ic_series) > 0 else 0
 
-        # 연간 거래비용: two-way * one-way-tc 단가 (실제 지출 비용)
-        annual_tc = avg_turnover_two_way * ONE_WAY_TC
+        # 연간 거래비용: prefer actual accumulated TC (handles per-ticker
+        # FX surcharge correctly via fx-cost-modeling step 1). Falls back to
+        # the legacy scalar approximation for old pkls without tc_costs.
+        if (hasattr(self, "tc_costs") and self.tc_costs is not None
+                and len(self.tc_costs) > 0):
+            n_years = len(port) / ann_factor
+            total_tc = float(self.tc_costs.sum())
+            annual_tc = total_tc / n_years if n_years > 0 else 0.0
+        else:
+            annual_tc = avg_turnover_two_way * ONE_WAY_TC
 
         result = {
             "annual_return": base.get("annual_return", 0),
@@ -1078,6 +1091,7 @@ def simulate_portfolio(
     bm_rets = []
     spx_rets = []
     turnovers = []
+    tc_costs = []  # fx-cost-modeling step 1: actual TC paid each rebal day
     ic_values = []
     weight_history = {}
     weight_history_daily = {}
@@ -1256,12 +1270,28 @@ def simulate_portfolio(
 
                 # Two-way L1 turnover: sum(|new - old|).
                 # NOTE: industry one-way convention = 0.5 * L1 (halve this).
-                turnover = np.abs(new_weights - prev_weights).sum()
+                delta_w = np.abs(new_weights - prev_weights)
+                turnover = delta_w.sum()
                 turnovers.append((t_date, turnover))
                 weight_history[t_date] = pd.Series(new_weights, index=tickers)
 
-                # Step 4: TC charged to today's PnL (paid at close_t)
-                tc_cost = turnover * one_way_tc
+                # Step 4: TC charged to today's PnL (paid at close_t).
+                # fx-cost-modeling step 1: per-ticker TC = scalar one_way_tc
+                # plus optional FX surcharge for KRX-listed names. Falls
+                # back to scalar product when surcharge dict is empty so
+                # callers passing config without the field see no behaviour
+                # change (backward compat).
+                fx_surcharge = getattr(config, "fx_surcharge_per_ticker", {}) or {}
+                if fx_surcharge:
+                    fx_vec = np.array(
+                        [fx_surcharge.get(t, 0.0) for t in tickers],
+                        dtype=float,
+                    )
+                    tc_per_ticker = one_way_tc + fx_vec
+                    tc_cost = float(np.sum(delta_w * tc_per_ticker))
+                else:
+                    tc_cost = float(turnover * one_way_tc)
+                tc_costs.append((t_date, tc_cost))
                 port_ret -= tc_cost
 
                 prev_weights = new_weights
@@ -1305,6 +1335,9 @@ def simulate_portfolio(
     ).sort_index()
     result.turnover = pd.Series(
         dict(turnovers), name="turnover"
+    ).sort_index()
+    result.tc_costs = pd.Series(
+        dict(tc_costs), name="tc_cost"
     ).sort_index()
     result.portfolio_weights = weight_history
     result.daily_weights = weight_history_daily
@@ -1519,6 +1552,7 @@ def run_backtest(
     result.portfolio_returns = sim_result.portfolio_returns
     result.benchmark_returns = sim_result.benchmark_returns
     result.turnover = sim_result.turnover
+    result.tc_costs = sim_result.tc_costs  # fx-cost-modeling step 1
     result.portfolio_weights = sim_result.portfolio_weights
     result.daily_weights = sim_result.daily_weights
     result.ic_series = sim_result.ic_series

@@ -19,6 +19,16 @@
       "dir": "selection-bias-discipline",
       "status": "completed",
       "completed_at": "2026-05-19T15:55:00+0900"
+    },
+    {
+      "dir": "final-v1-promotion",
+      "status": "completed",
+      "completed_at": "2026-05-19T22:55:00+0900"
+    },
+    {
+      "dir": "fx-cost-modeling",
+      "status": "completed",
+      "completed_at": "2026-05-21T10:55:00+0900"
     }
   ]
 }
