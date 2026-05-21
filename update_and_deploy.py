@@ -55,10 +55,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 
 DEFAULT_DATA_FILE = Path(r"C:\Users\westl\PycharmProjects\pythonProject\venv_vf_new\machine\re_study\ai_signal_data.xlsx")
-# Production variant (IR 1.31, value-trap-gate ON). Was iter15_65tkr_reb21.yaml
-# without _vtg, which produced a different model. Update only after a new
-# variant is officially blessed as production.
-DEFAULT_VARIANT = ROOT / "variants" / "iter15_65tkr_reb21_vtg.yaml"
+# Production variant. 2026-05-19 v2 cutover (final-v1-promotion step 2):
+#   was iter15_65tkr_reb21_vtg.yaml (leaky env, IR 1.30, turnover 113.6%)
+#   now baseline_v5_deploy.yaml     (embargo + lean panel, IR 1.30, turnover 110.3%,
+#                                    all 5 primary gates PASS, Haircut Adj SR 0.524)
+# Legacy artifacts preserved at outputs/baseline_v4_legacy/.
+# To roll back: change this constant to "iter15_65tkr_reb21_vtg.yaml" and
+# restore outputs/baseline_v4/ from outputs/baseline_v4_legacy/.
+DEFAULT_VARIANT = ROOT / "variants" / "baseline_v5_deploy.yaml"
 DEFAULT_RUN_DIR = Path(os.environ.get("CC2_RUN_DIR", ROOT / "outputs" / "baseline_v4"))
 DEFAULT_DASHBOARD_PKL = DEFAULT_RUN_DIR / "dashboard_data.pkl"
 DEFAULT_DASHBOARD_REPO = Path(
@@ -450,6 +454,14 @@ def main() -> None:
     else:
         stage_deploy(args.dashboard_repo, args.run_dir,
                      dashboard_pkl, push=not args.no_push)
+
+    # final-v1-promotion step 4: live-vs-backtest drift monitor.
+    # Non-fatal — deploy proceeds regardless.
+    try:
+        run([sys.executable, str(ROOT / "scripts" / "compute_live_delta.py")],
+            cwd=ROOT, label="compute_live_delta.py")
+    except SystemExit:
+        warn("live-delta monitor failed; deploy continues (monitor is advisory only)")
 
     dt = time.time() - t_start
     print(f"\n{_hr('=')}")

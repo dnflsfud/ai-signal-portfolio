@@ -49,6 +49,33 @@ from src.backtest import (
 from src.config import DEFAULT_CONFIG
 from src.utils import annualise_return, compute_performance_metrics
 
+
+# ---------------------------------------------------------------------------
+# Live snapshot persistence (final-v1-promotion step 4, 2026-05-19 v2)
+# ---------------------------------------------------------------------------
+def _persist_live_snapshot(target_weights: "pd.Series", asof: "pd.Timestamp",
+                           out_dir: "Path | None" = None) -> "Path":
+    """Persist today's target weights as the 'live decision' snapshot.
+
+    Idempotent: if a file for this asof already exists, do NOT overwrite —
+    the first decision of the day is what matters; subsequent runs of
+    daily_update.py within the same date are intra-day re-runs and must
+    not modify the audit trail.
+
+    Returns the path written or already existing.
+    """
+    if out_dir is None:
+        out_dir = ROOT / "outputs" / "live_log"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    fname = out_dir / f"{asof.strftime('%Y-%m-%d')}.csv"
+    if fname.exists():
+        return fname
+    df = target_weights.rename("target_weight").to_frame().reset_index()
+    df.columns = ["ticker", "target_weight"]
+    df.insert(0, "asof", asof.strftime("%Y-%m-%d"))
+    df.to_csv(fname, index=False, encoding="utf-8")
+    return fname
+
 # State schema version. Bump when DailyState fields change so old pickles
 # can't be silently loaded with mismatched assumptions (e.g. EW-vs-cap BM).
 STATE_SCHEMA_VERSION = 2  # v2: cap-weighted BM (was EW in v1)
@@ -521,6 +548,11 @@ def incremental_update(data: UniverseData) -> DailyState:
                         n_new_rebal += 1
                         print(f"  [{t_date.strftime('%Y-%m-%d')}] 리밸런싱 "
                               f"(turnover: {turnover:.1%}, conf: {confidence:.2f})")
+                        # final-v1-promotion step 4: persist live snapshot
+                        # (one file per business date, idempotent — first
+                        # decision of the day wins, intra-day re-runs do NOT
+                        # overwrite the audit trail).
+                        _persist_live_snapshot(pd.Series(new_weights, index=tickers), t_date)
 
             # --- Record (after all PnL/TC/drift/rebal adjustments) -----------
             state.port_rets.append((t_date, port_ret))

@@ -1,21 +1,15 @@
-# outputs/baseline_v4/ — Deploy Baseline (alias)
+# outputs/baseline_v4/ — Deploy Baseline
 
-**Status (2026-05-19 v2)**: deploy baseline alias for the live
-`update_and_deploy.bat` pipeline. After cutover (final-v1-promotion step 2),
-this directory holds the result of `variants/baseline_v5_deploy.yaml`.
+**Status (2026-05-19)**: deploy baseline for the live `update_and_deploy.bat`
+pipeline. NOT the research baseline for new variant promotion.
 
 ## What this directory is
 
 This is the artifact set produced by running
-`variants/baseline_v5_deploy.yaml` under `tuning_mode: deploy` — i.e.
+`variants/iter15_65tkr_reb21_vtg.yaml` under `tuning_mode: deploy` — i.e.
 without OOS hold-out (cutoff disabled, full sample through the latest data
 date). The daily refresh flow (`update_and_deploy.bat`, `daily_update.py`,
 `scripts/build_dashboard_data.py`, `streamlit_mobile.py`) reads from here.
-
-The legacy `iter15_65tkr_reb21_vtg.yaml` artifacts (IR 1.30, leaky env) are
-preserved at `outputs/baseline_v4_legacy/` for audit and roll-back. The
-`baseline_v4` directory name is kept as an alias so the dashboard wiring
-doesn't change.
 
 ## What this directory is NOT
 

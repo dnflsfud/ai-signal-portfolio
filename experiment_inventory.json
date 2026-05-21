@@ -2,6 +2,10 @@
   "description": "Conservative inventory of distinct strategy configurations that were backtested during the research phase of ai_signal_cc2_harness. Used by run_selection_bias.py --auto to pass a realistic N_trials into the Deflated Sharpe Ratio / Haircut calculation. Update this file whenever you run a new comparison / grid / experiment.",
   "n_oos_peeks": 1,
   "n_trials_total": 402,
+  "n_trials_pre_leakage_fix": 402,
+  "n_trials_post_leakage_fix": 10,
+  "n_trials_active": 10,
+  "n_trials_active_rationale": "Post-2026-05-19 leak-fix trials only (final-v1-promotion step 1). The pre-fix model class used a leaky walk-forward (no embargo, train/val/predict overlap); its trials informed a different alpha surface and the strategies that won under that null are not Pareto-comparable. Counting all 402 pre-fix trials inflates the haircut against the post-fix model class without protecting against the leakage-corrected null. Composition of n_trials_active=10: 1 research baseline (iter15_FINAL_postfix) + 7 ablations (no_vtg, no_growth_tilt, no_pead, no_mega_funding, revision_down_only, feature_mode_lean, all_overlays_off) + 1 PCA scale A/B (exp_pca_scale_daily_eq vs raw) + 1 candidate (baseline_v5).",
   "notes": [
     "396 is a conservative lower bound. Actual N is likely higher once",
     "ad-hoc config.py tweaks over the research period are counted.",

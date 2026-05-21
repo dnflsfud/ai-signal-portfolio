@@ -9,7 +9,6 @@
     "cov_lookback": 126,
     "data_path": "C:\\Users\\westl\\PycharmProjects\\pythonProject\\venv_vf_new\\machine\\re_study\\ai_signal_data.xlsx",
     "early_stopping_rounds": 100,
-    "embargo_days": 20,
     "enforce_oos_holdout": false,
     "enforce_score_gated_ow": true,
     "ewma_alpha": 0.3,
@@ -17,7 +16,7 @@
     "ewma_enabled": true,
     "ewma_min_features": 60,
     "ewma_min_retrains": 2,
-    "feature_mode": "lean",
+    "feature_mode": "core",
     "forward_horizon": 20,
     "growth_tilt_enabled": true,
     "growth_tilt_eps_skew": 0.5,
@@ -69,7 +68,6 @@
     "pca_n_remove": 2,
     "pca_regime_vol_col": "VIX",
     "pca_regime_vol_threshold": 1.0,
-    "pca_target_scale_mode": "raw",
     "pead_boost_enabled": true,
     "pead_boost_weight": 0.3,
     "pead_decay_days": 7.0,
@@ -94,7 +92,7 @@
     "sector_deviation": 0.1,
     "signal_stability_lambda": 0.0,
     "trailing_ic_window": 6,
-    "train_cutoff_date": "2024-12-31",
+    "train_cutoff_date": null,
     "train_window": 1260,
     "turnover_penalty": 0.03,
     "use_score_based": false,
@@ -106,12 +104,12 @@
     "vtg_scale": 0.0
   },
   "extra": {
-    "description": "Production deploy version of baseline_v5. Same overrides as variants/baseline_v5.yaml but tuning_mode: deploy (cutoff OFF, no OOS peek consumed). Used by update_and_deploy.bat after final-v1-promotion phase (2026-05-19 v2). Replaces variants/iter15_65tkr_reb21_vtg.yaml in the production daily flow.\nKey difference vs baseline_v5.yaml: tuning_mode is `deploy` here, meaning src/config.py auto-disables enforce_oos_holdout and train_cutoff_date so the strategy runs through the latest available date. Everything else identical.\nLineage: iter15_FINAL_postfix (research) -> baseline_v5 (oos_verify, IR trim 0.898, all 5 primary gates PASS) -> baseline_v5_deploy (this file, full-window deploy).\n",
-    "manifest_path": "C:\\Users\\westl\\PycharmProjects\\pythonProject\\venv_vf_new\\machine\\re_study\\c2\\ai_signal_cc2_harness\\variants\\baseline_v5_deploy.yaml",
-    "tuning_mode": "deploy",
-    "variant_label": "baseline_v5_deploy"
+    "description": "iter15_65tkr_reb21 + post-prediction value-trap gate. Zeroes score for (cheap PE z<-0.5) & (momentum_252d<-0.5) & (oper_margin_accel>+0.5) profile \u2014 empirically -0.25% / 20d specific return (hit 47.3%), -1.99% in P3 regime. Does not touch panel/model, so split destabilization risk seen in iter15_65tkr_reb21_sent is avoided. Target: P3 IR improvement \u2265 +0.2, P1/P2 preserved, turnover \u2264 +5%p.\n",
+    "manifest_path": "C:\\Users\\westl\\PycharmProjects\\pythonProject\\venv_vf_new\\machine\\re_study\\c2\\ai_signal_cc2_harness\\variants\\iter15_65tkr_reb21_vtg.yaml",
+    "tuning_mode": "production",
+    "variant_label": "iter15_65tkr_reb21_vtg"
   },
   "git_dirty": true,
-  "git_hash": "209dab82cb6c5e12c77a711f05a8382de067f75b",
-  "timestamp_utc": "2026-05-20T06:00:28Z"
+  "git_hash": "28f449a310e0434c421cf2141c5090b8f945516f",
+  "timestamp_utc": "2026-05-15T07:44:52Z"
 }

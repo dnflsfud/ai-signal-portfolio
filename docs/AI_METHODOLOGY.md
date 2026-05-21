@@ -355,6 +355,27 @@ Step 4: TC를 오늘 PnL에서 차감
 ```
 이 순서가 깨지면 "오늘 결정한 비중으로 오늘 수익을 챙기는" look-ahead가 발생.
 
+### TC (거래비용) 모델 — fx-cost-modeling (2026-05-21)
+기본 TC는 `one_way_tc = 10 bps` 스칼라로 모든 종목에 동일 적용. 추가로 KRW
+상장 종목 (000660 SK Hynix, 005930 Samsung Electronics) 은 `fx_surcharge_per_ticker`
+dict 에 의해 **편도 +3 bp** 의 FX 가산 (round-trip 6 bp 추가). 근거: KRW↔USD spot
+bid-ask (~1-3 bp) + 슬리피지 (~1-2 bp) 의 기관-현실 mid-point.
+
+코드 경로:
+```python
+# src/backtest.py simulate_portfolio
+delta_w = np.abs(new_weights - prev_weights)
+fx_vec = np.array([fx_surcharge_per_ticker.get(t, 0.0) for t in tickers])
+tc_per_ticker = one_way_tc + fx_vec
+tc_cost = float(np.sum(delta_w * tc_per_ticker))
+port_ret -= tc_cost
+```
+
+`BacktestResult.tc_costs` 에 일별 실제 TC 누적. `compute_metrics.annual_tc` 는
+이 누적 시리즈를 우선 사용 (legacy pkl은 `turnover × ONE_WAY_TC` 로 fallback).
+새 KRX 종목 추가시 dict에 등록만 하면 됨. measurement layer만 변경 — MVO objective
+의 turnover_penalty 는 미수정 (strategy behavior 보존).
+
 ---
 
 ## 8. 검증: 무엇으로 신호가 좋은지 판단하나

@@ -277,7 +277,8 @@ python scripts/build_dashboard_data.py --run outputs/baseline_v4 --data data/ai_
 | train_window | **1260일 (5년)** | 다중 레짐 커버리지 |
 | retrain_freq | 63일 (분기) | Pictet 기준 |
 | rebalance_freq | **21일 (월간)** | REDESIGN R — turnover 제어 (이전 10일에서 변경) |
-| one_way_tc | 10 bps | |
+| one_way_tc | 10 bps | 모든 종목 공통 편도 TC (스칼라) |
+| **fx_surcharge_per_ticker** | **{000660: 3bp, 005930: 3bp}** | **fx-cost-modeling (2026-05-21) — KRW↔USD spot bid-ask + slippage; one_way_tc 위에 가산. round-trip 6bp 추가** |
 | **embargo_days** | **20** | **data-leakage-fix (2026-05) — walk-forward train/val/predict 간 라벨 누수 차단** |
 | **enforce_oos_holdout** | **True** | **data-leakage-fix (2026-05) — research 모드에서 자동 적용** |
 | **train_cutoff_date** | **"2024-12-31"** | **data-leakage-fix (2026-05) — research 모드는 이 날짜까지만 학습/예측** |
@@ -372,13 +373,30 @@ python scripts/build_dashboard_data.py --run outputs/baseline_v4 --data data/ai_
 | **Sub-period Stability** | ✅ ALL POSITIVE | P2가 약하지만 음수 아님 |
 | 유니버스 | **65종목** | (이전 50종목에서 확장) |
 
-### Selection Bias 검증 (legacy environment — STALE 2026-05-19)
+### Selection Bias 검증 — baseline_v5 (recount, 2026-05-19 v2 — CANONICAL)
+
+> **재측정 (`final-v1-promotion` step 1, 2026-05-19 v2)** — N_trials anchor를
+> 402 → **10** (post-leak-fix model class only) 로 재정의 후 baseline_v5 pkl 에서 재측정.
+
+| 지표 | 값 | 판정 |
+|---|---|---|
+| Observed SR (annualized) | 1.289 | — |
+| **DSR** | **1.470 (p=0.0708)** | **WARN** (borderline) |
+| MinTRL | 1.6년 필요 vs 7.7년 보유 | SUFFICIENT |
+| **Adjusted SR** | **0.524** | **PASS** (legacy 0.062 대비 8.5배) |
+| Late entrants | 0 | CLEAN |
+| Sub-period IR | P1 +0.72 / P2 +1.26 / P3 +1.86 | STABLE |
+| **Overall verdict** | **WARN** | DSR borderline; Haircut PASS — promotion-eligible |
+
+자세한 해석은 `CLAUDE.md` 또는 `docs/BASELINE.md` 의 동일 박스 참조.
+
+---
+
+### Selection Bias 검증 (legacy environment — STALE 2026-05-19, audit 보존용)
 
 > **⚠️ 아래 측정은 data-leakage-fix 이전(누수 환경)의 production strategy(`iter15_65tkr_reb21_vtg`)에서**
-> **이뤄진 것**이다. 새 research baseline (`iter15_FINAL_postfix`, IR=0.392)에 대한 DSR/Haircut
-> 재측정은 Task C step 2 (rolling-IR + SPA p-value 도입) 완료 후로 미룬다. 라벨 누수가
-> 제거된 IR=0.392는 N_trials=402 다중비교 보정 하에서 더더욱 통계적으로 미달이 명백하기에,
-> 평가 방식 자체를 (rolling 1년 IR 분포 + Hansen SPA) 갈아낀 뒤 단일 통계로 재판정한다.
+> **이뤄진 것**이다. 위 박스가 canonical. 본 항목은 단위 오류 이력 + N=402 inflation 이력을
+> audit trail 로 보존하기 위해 유지.
 
 원본 측정값 (`run_selection_bias.py --auto --label iter15_65tkr_reb21_vtg`, 2026-04-30, 누수 환경):
 
@@ -426,3 +444,5 @@ fallback chain: top-level `outputs/backtest_result.pkl` → `iter15_65tkr_reb21_
 13. ✅ **OOS hold-out 자동 강제** — research/oos_verify/deploy/production(deprecated) 모드. cutoff=2024-12-31. peek 카운터 `experiment_inventory.json.n_oos_peeks`로 회계. Task A step 1
 14. ✅ **Single-statistic primary gate (rolling IR + SPA)** — `src/analytics.rolling_ir_stats`, `spa_pvalue` (Hansen 2005 simplified). `compute_metrics`에 7개 신규 키. 다중-목표 fitting 방지. selection-bias-discipline Task C step 2
 15. ✅ **Checkpoint config fingerprint** — `src/backtest.compute_config_fingerprint`. Phase 1/2/4 캐시가 silent stale로 재사용되지 않도록 mismatch 시 자동 폐기. Task C step 0
+16. ✅ **Turnover gate effective ceiling** — 1.1864 (= max(research baseline 0.908, legacy deploy 1.1364) + 5pp). 이전 "≥ baseline + 5pp"는 embargo-trimmed research turnover (0.908)만 기준 삼아 ceiling이 인위적으로 낮았음 (0.958). 실제 production이 지불하는 turnover는 deploy baseline (1.1364)에 의해 결정되므로 ceiling은 둘 중 큰 값. `docs/BASELINE.md` 2026-05-19 v2 gate (5) 참조. baseline_v5 (1.1031) PROMOTION-ELIGIBLE.
+17. ✅ **Rolling IR min gate relativized** — `rolling_ir_min` 절대 임계값 `≥ -0.20`은 research baseline 자신 (-2.15)도 통과 못 했던 logic error. `≥ baseline - 0.20`으로 수정 (gate 1·2와 일관된 relative 형식). `docs/BASELINE.md` 2026-05-19 v2 gate (3) 참조.

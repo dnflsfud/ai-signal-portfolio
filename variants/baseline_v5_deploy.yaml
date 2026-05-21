@@ -1,0 +1,27 @@
+label: baseline_v5_deploy
+description: >
+  Production deploy version of baseline_v5. Same overrides as
+  variants/baseline_v5.yaml but tuning_mode: deploy (cutoff OFF, no OOS peek
+  consumed). Used by update_and_deploy.bat after final-v1-promotion phase
+  (2026-05-19 v2). Replaces variants/iter15_65tkr_reb21_vtg.yaml in the
+  production daily flow.
+
+  Key difference vs baseline_v5.yaml: tuning_mode is `deploy` here, meaning
+  src/config.py auto-disables enforce_oos_holdout and train_cutoff_date so
+  the strategy runs through the latest available date. Everything else
+  identical.
+
+  Lineage: iter15_FINAL_postfix (research) -> baseline_v5 (oos_verify, IR
+  trim 0.898, all 5 primary gates PASS) -> baseline_v5_deploy (this file,
+  full-window deploy).
+out_dir: outputs/baseline_v5_deploy
+tuning_mode: deploy
+overrides:
+  rebalance_freq: 21
+  embargo_days: 20
+  feature_mode: "lean"
+  value_trap_gate_enabled: true
+  vtg_pe_z_threshold: -0.5
+  vtg_momentum_threshold: -0.5
+  vtg_accel_threshold: 0.5
+  vtg_scale: 0.0

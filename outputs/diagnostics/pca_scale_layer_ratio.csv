@@ -1,0 +1,3 @@
+layer,mean_std_raw,mean_std_daily_eq,ratio_deq_over_raw
+raw_predictions (pre post-process),0.992277876713668,0.992277876713668,1.0
+predictions (post post-process),0.9496125494091355,0.9506304780336144,1.0010719409985813

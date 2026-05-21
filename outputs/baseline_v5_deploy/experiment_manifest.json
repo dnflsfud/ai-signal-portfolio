@@ -19,6 +19,10 @@
     "ewma_min_retrains": 2,
     "feature_mode": "lean",
     "forward_horizon": 20,
+    "fx_surcharge_per_ticker": {
+      "000660": 0.0003,
+      "005930": 0.0003
+    },
     "growth_tilt_enabled": true,
     "growth_tilt_eps_skew": 0.5,
     "growth_tilt_fundamental_weight": 0.5,
@@ -107,11 +111,11 @@
   },
   "extra": {
     "description": "Production deploy version of baseline_v5. Same overrides as variants/baseline_v5.yaml but tuning_mode: deploy (cutoff OFF, no OOS peek consumed). Used by update_and_deploy.bat after final-v1-promotion phase (2026-05-19 v2). Replaces variants/iter15_65tkr_reb21_vtg.yaml in the production daily flow.\nKey difference vs baseline_v5.yaml: tuning_mode is `deploy` here, meaning src/config.py auto-disables enforce_oos_holdout and train_cutoff_date so the strategy runs through the latest available date. Everything else identical.\nLineage: iter15_FINAL_postfix (research) -> baseline_v5 (oos_verify, IR trim 0.898, all 5 primary gates PASS) -> baseline_v5_deploy (this file, full-window deploy).\n",
-    "manifest_path": "C:\\Users\\westl\\PycharmProjects\\pythonProject\\venv_vf_new\\machine\\re_study\\c2\\ai_signal_cc2_harness\\variants\\baseline_v5_deploy.yaml",
+    "manifest_path": "variants\\baseline_v5_deploy.yaml",
     "tuning_mode": "deploy",
     "variant_label": "baseline_v5_deploy"
   },
   "git_dirty": true,
-  "git_hash": "209dab82cb6c5e12c77a711f05a8382de067f75b",
-  "timestamp_utc": "2026-05-20T06:00:28Z"
+  "git_hash": "73b051f20b0c683cb2f7edb9270399a776178e9e",
+  "timestamp_utc": "2026-05-21T01:34:28Z"
 }

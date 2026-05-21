@@ -1,7 +1,29 @@
 # `update_and_deploy.bat` — 최종 파이프라인 흐름
 
 > 이 문서는 cleanup 후 production 운영자가 읽어야 할 단 하나의 운영 reference다.
-> 작성일: 2026-05-15 · 대상 production manifest: `variants/iter15_65tkr_reb21_vtg.yaml`
+> 작성일: 2026-05-15 · 대상 production manifest: `variants/baseline_v5_deploy.yaml`
+
+## Cutover history
+
+| 날짜 | 변경 | 사유 |
+|---|---|---|
+| 2026-04-24 | (production locked) `variants/iter15_65tkr_reb21_vtg.yaml` | IR 1.31, VTG ON. `outputs/baseline_v4/` alias 도입. |
+| **2026-05-19 v2** | **`variants/baseline_v5_deploy.yaml`** | data-leakage-fix 이후 honest evaluation. embargo + cutoff + lean panel 조합으로 baseline_v5 (5/5 primary gates PASS, Adjusted SR 0.524) 가 promotion-eligible 판정. 기존 leaky variant 의 `outputs/baseline_v4/` 는 `outputs/baseline_v4_legacy/` 로 백업. dashboard hard-code 경로 `outputs/baseline_v4/` 는 alias로 유지. 자세한 promotion 절차: `phases/final-v1-promotion/`. |
+
+Roll-back: `update_and_deploy.py:DEFAULT_VARIANT`을 `iter15_65tkr_reb21_vtg.yaml`로 되돌리고 `cp -r outputs/baseline_v4_legacy/* outputs/baseline_v4/` 복원.
+
+## Live drift monitor (final-v1-promotion step 4, 2026-05-19 v2)
+
+매 `daily_update.py` / `update_and_deploy.py --mode full` 실행 마지막에 다음이 자동 수행된다:
+
+1. `outputs/live_log/<date>.csv` 에 그 날의 target weights 가 한 번 저장
+   (intra-day 재실행 시 덮어쓰지 않음 — `_persist_live_snapshot` 의 idempotency).
+2. `scripts/compute_live_delta.py` 가 `outputs/live_delta_log.csv` 를 append 갱신.
+3. `l1_drift > 0.10` 일 경우 stdout 에 `[LIVE-DELTA WARN]` 출력.
+
+`l1_drift` 가 큰 날은 (a) 코드 변경 (b) 데이터 정합성 문제 (c) walk-forward 재훈련 boundary 의 의도된 reshuffle 중 하나. **0.10 초과가 2영업일 연속 발생하면 root-cause 조사**: 코드 diff, data freshness, retrain date 와 일치 여부 점검.
+
+Monitor 는 advisory only — 실패해도 deploy 는 중단되지 않는다.
 
 ---
 

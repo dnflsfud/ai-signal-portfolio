@@ -1,0 +1,4 @@
+label,window,years,n_retrain,retrain_per_year,annual_turnover_2way,median_abs_score_delta_at_boundary,information_ratio
+baseline_v4,2018-11-26 -> 2026-05-15,7.47,31,4.15,1.1364,0.3074,1.3043
+iter15_FINAL_postfix,2018-11-26 -> 2026-05-15,7.47,26,3.48,0.908,0.1672,1.017
+baseline_v5,2018-11-26 -> 2026-05-15,7.47,31,4.15,1.1031,0.2706,1.299

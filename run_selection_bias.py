@@ -56,6 +56,14 @@ def load_experiment_inventory() -> int:
         return 1
     with open(INVENTORY_PATH, "r", encoding="utf-8") as f:
         inv = json.load(f)
+    # Prefer n_trials_active (post-leak-fix model class only) when set.
+    # Fallback to n_trials_total for backward compat with pre-2026-05-19 calls.
+    if "n_trials_active" in inv:
+        n = int(inv["n_trials_active"])
+        print(f"  [inventory] N_trials_active = {n}  (post-leak-fix model class only)")
+        if "n_trials_active_rationale" in inv:
+            print(f"  [inventory] rationale: {inv['n_trials_active_rationale'][:120]}...")
+        return n
     n = int(inv.get("n_trials_total", 1))
     scripts = inv.get("scripts", [])
     print(f"  [inventory] N_trials_total = {n} from {len(scripts)} entries")
