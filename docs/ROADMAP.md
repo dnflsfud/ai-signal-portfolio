@@ -175,8 +175,11 @@ Decision rule from diagnostic:
 
 Step 1 — Tuning-mode variants (OOS hold-out active):
 ```bash
-python run_variant.py --variant variants/exp_revision_reversion_gated.yaml
-python run_variant.py --variant variants/exp_revision_symmetric.yaml
+# Both manifests were retired to archive/variants/ on 2026-05-27 (see
+# archive/README.md). Resurrect by copying back to variants/ and switching
+# `tuning_mode: production` → `research` before running.
+python run_variant.py --variant archive/variants/exp_revision_reversion_gated.yaml
+python run_variant.py --variant archive/variants/exp_revision_symmetric.yaml
 ```
 
 Step 2 — Compare to baseline:

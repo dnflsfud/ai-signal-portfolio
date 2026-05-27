@@ -138,7 +138,8 @@ AAPL, MSFT, GOOGL, AMZN, META, NVDA, TSLA, PLTR, AVGO, MU, GEV, VRT, BE, LITE, 0
 - Size bucket: is_mega_cap(rank>0.8), is_small(rank<0.3)
 
 최종 피처 수 (설계 시안): 약 80~120개.
-**실측 (production, feature_mode="core" + EWMA prune): 61개 / 7 그룹.** 자세한 분포는 아래 *Feature 61개 구성* 표 참조.
+**실측 (production deploy, feature_mode="lean" + EWMA prune; 2026-05-20 promotion).**
+참고용 `core` 모드 panel은 61개 / 7 그룹 (아래 *Feature 구성* 표).
 
 ### Phase 3: 타겟 변수 (src/target_engine.py)
 20일 Specific Return = PCA 잔차 수익률.
@@ -251,11 +252,11 @@ python scripts/build_dashboard_data.py --run outputs/baseline_v4 --data data/ai_
 
 ## 핵심 파라미터 (src/config.py `DEFAULT_CONFIG` 기준 – 실제 실행값)
 
-### 프로덕션 구성 = **Core (feature_mode) + Core-Satellite + Score-Gate + Cap-Weighted BM** (2026-04 ~ )
+### 프로덕션 구성 = **Lean (feature_mode) + Core-Satellite + Score-Gate + Cap-Weighted BM** (2026-05-20 baseline_v5 promotion ~ )
 
 | 파라미터 | 값 | 의미 |
 |----------|-----|------|
-| **feature_mode** | **core** | 핵심 피처 화이트리스트 (feature_importance 기반 prune, 실측 panel 61개 피처 / 7개 그룹) |
+| **feature_mode** | **lean** | overlay-ablation Task B에서 단일 knob 최대 IR 개선 (+0.506 trimmed) → `DEFAULT_CONFIG.feature_mode` 가 2026-05-20에 lean으로 promotion됨. 참고용 core panel(61개 / 7 그룹)은 아래 표 |
 | **benchmark_type** | **cap_weighted** | 시가총액 가중 (REDESIGN A) |
 | **portfolio_style** | **core_satellite** | ~78% 코어 (BM 추적) + ~22% 새틀라이트 (active) |
 | satellite_budget | **0.225** | 일방향 active share 목표 (= L1/2) — iter9 baseline |
@@ -304,14 +305,16 @@ python scripts/build_dashboard_data.py --run outputs/baseline_v4 --data data/ai_
 | multi_horizon_targets_enabled | 5d/20d/63d 멀티 horizon 타겟 앙상블 |
 | bm_proportional_cap_enabled | BM/vol 비례 active cap (mega_cap_protection 일반화) |
 | signal_stability_lambda | retrain간 score 변화 shrinkage |
-| value_trap_gate_enabled | (단, iter15_65tkr_reb21_vtg / baseline_v4 variant 에선 ON으로 override) |
+| value_trap_gate_enabled | (단, `baseline_v5_deploy` / `baseline_v5` / legacy `iter15_65tkr_reb21_vtg` 에선 ON으로 override; `vtg_scale=0.0`이라 실효 비활성) |
 | enforce_oos_holdout | 튜닝 시 train_cutoff_date 이후 데이터 차단 |
 
 > **SSOT**: `src/config.py` 의 `DEFAULT_CONFIG`. 본 문서는 그 스냅샷이며, 충돌 시 config.py가 진실.
 > 실행 시마다 `outputs/experiment_manifest.json` 에 현재 config + git hash 스냅샷 저장.
 > Variant 실행은 `variants/<label>.yaml` 의 `overrides:` 가 DEFAULT_CONFIG 위에 적용됨 (`run_variant.py`).
 
-### Feature 61개 구성 / 7 그룹 (실측: outputs/csv/feature_importance.csv 기준)
+### Feature 구성 — 참고용 `core` 모드 panel 61개 / 7 그룹 (실측: outputs/csv/feature_importance.csv 기준)
+
+> 2026-05-20 promotion 이후 production은 `feature_mode="lean"`. 아래 표는 직전 `core` 모드 구성의 스냅샷이며, lean panel 의 실 분포는 `outputs/csv/feature_importance.csv` 참조.
 
 | 그룹 | 개수 | 비중 | 비고 |
 |---|---|---|---|
@@ -326,53 +329,51 @@ python scripts/build_dashboard_data.py --run outputs/baseline_v4 --data data/ai_
 **합계: 61 features / 7 groups.**
 
 > 이전 핸드픽 46개 (Accounting 18 / Price 12 / Sellside 8 / Factor 5 / Conditioning 3) 디자인에
-> Phase 2 MacroCross 5개 + Financials 11개가 추가되어 현재 61개. `feature_mode="core"` 화이트리스트의
-> 실제 산출은 `src/feature_engine.build_all_features()` + EWMA prune (하위 5%, min 60유지) 결과로 결정됨.
+> Phase 2 MacroCross 5개 + Financials 11개가 추가되어 위 `core` 모드는 61개. 현재 default 인
+> `feature_mode="lean"` panel 은 `src/feature_engine.build_all_features()` + EWMA prune 결과로 산출되며,
 > 정확한 리스트는 `outputs/csv/feature_importance.csv` 참조.
 
-### 최종 성과 — 두 baseline 동시 노출 (2026-05-19 이후)
+### 최종 성과 — 세 baseline 분리 노출 (2026-05-19 v2 cutover 이후)
 
-> **research baseline** (canonical, embargo+cutoff 적용): `iter15_FINAL_postfix`
-> 출처: `outputs/iter15_FINAL_postfix/metrics.json` + `comparison.md` (2026-05-19).
-> 윈도우: 2018-11-26 → 2024-12-31 (1592일, cutoff-trimmed).
+> 1) **research baseline** (canonical gate denominator, conservative anchor):
+>    `iter15_FINAL_postfix` — `outputs/iter15_FINAL_postfix/` + `comparison.md` (2026-05-19).
+>    `tuning_mode: research`, cutoff=2024-12-31, embargo=20. 윈도우 1592일.
+>    **신규 변형 promotion gate 의 분모로만 사용** (`docs/BASELINE.md` Gate 1-5).
 >
-> | 지표 | research baseline | (참고) legacy deploy |
-> |---|---:|---:|
-> | Information Ratio | **0.392** | 1.310 (`baseline_v4`) |
-> | Active Return / yr | **+1.26%** | +4.28% |
-> | Tracking Error | 2.88% | 3.26% |
-> | Sharpe | 1.094 | 1.289 |
-> | P1 IR (2018-11~2021-05) | **+1.287** | +1.537 |
-> | P2 IR (2021-05~2023-10) | **−0.497** | +0.171 |
-> | P3 IR (cutoff-trimmed: 2023-10~2024-12) | **+0.390** | (1.911 full window) |
-> | Annual Turnover 2-way | 90.8% | 109.5% |
-> | Avg IC | 0.0463 | 0.0355 |
-> | 마지막 예측일 | 2024-12-31 | 2026-05-15 |
+> 2) **production deploy baseline** (현재 `update_and_deploy.bat` 진입점):
+>    `baseline_v5_deploy` — `outputs/baseline_v5_deploy/` (+ alias `outputs/baseline_v4/`).
+>    `tuning_mode: deploy`, cutoff OFF. final-v1-promotion (2026-05-19 v2) 에서 cutover.
+>    feature_mode=lean 단일 knob 적용 (overlay-ablation Task B 결과).
 >
-> **핵심 진단**: legacy IR 1.310 → 동일 cutoff-trimmed 윈도우의 legacy IR=0.804 → embargo
-> 추가 시 0.392. ΔIR=−0.412는 walk-forward 라벨 누수 프리미엄으로 추정. **P2가 양수에서
-> 음수로 전환** (+0.171 → −0.497). 즉 기존 P2 alpha의 대부분은 누수 효과였음.
->
-> **legacy deploy baseline** (실배포용, `update_and_deploy.bat`이 참조): `iter15_65tkr_reb21_vtg`
-> / `outputs/baseline_v4/`. cutoff 무시. 실제 데일리 운영 경로는 그대로 유지되며,
-> 연구/promotion 결정만 새 research baseline 기준으로 진행한다.
+> 3) **legacy deploy baseline** (archived, 누수 환경):
+>    `iter15_65tkr_reb21_vtg` — `outputs/baseline_v4_legacy/`. 2026-04-24 ~ 2026-05-19 production.
+>    audit/rollback 용 보존.
 
-| 지표 | 값 | 비고 |
-|----------|-----|------|
-| **Annual Return** | **28.96%** | vs cap-weighted BM 24.68% |
-| **Active Return** | **+4.28% / yr** | vs cap-weighted BM |
-| **Annual Volatility** | 22.46% | (BM vol 19.48%) |
-| **Tracking Error** | **3.26%** | core-satellite + score-gate로 안정화 |
-| **Sharpe Ratio** | **1.29** | (BM Sharpe ≈ 0.71, SPX 0.71) |
-| **Information Ratio** | **1.31** | ✅ 목표 ≥ 1.0 달성 |
-| **Max Drawdown** | -29.95% | |
-| **Annual Turnover** | **109.5% (two-way) / 54.7% (one-way)** | rebal_freq=21 + no-trade band 30bps + partial η=0.50 |
-| **Avg IC** | **0.0355** | 신호 ranking 양호 |
-| **Sub-period P1 IR** | **+1.54** | 2018-11 ~ 2021-05 |
-| **Sub-period P2 IR** | **+0.17** | 2021-05 ~ 2023-10 (긴축 전환기 — 가장 약함) |
-| **Sub-period P3 IR** | **+1.91** | 2023-10 ~ 2026-04 (최근 OOS) |
-| **Sub-period Stability** | ✅ ALL POSITIVE | P2가 약하지만 음수 아님 |
-| 유니버스 | **65종목** | (이전 50종목에서 확장) |
+| 지표 | 1) research baseline (gate denom.) | 2) production deploy (current) | 3) legacy deploy (archived) |
+|---|---:|---:|---:|
+| 매니페스트 | `iter15_FINAL_postfix.yaml` | `baseline_v5_deploy.yaml` | `iter15_65tkr_reb21_vtg.yaml` |
+| 윈도우 | 2018-11 → 2024-12 (trimmed) | 2018-11 → 2026-05 (full) | 2018-11 → 2026-05 (full, leaky) |
+| Annual Return | 24.58% | **30.12%** | 29.96% |
+| Active Return / yr | +1.26% | **+4.11%** | +4.10% |
+| Tracking Error | 2.88% | **3.16%** | 3.14% |
+| Sharpe | 1.094 | **1.371** | 1.332 |
+| **Information Ratio** | **0.392** | **1.298** | 1.304 |
+| Max Drawdown | −29.95% | −29.24% | −30.34% |
+| Annual Turnover 2-way | 90.8% | **110.3%** | 113.6% |
+| Avg IC | 0.0463 | **0.0478** | 0.0450 |
+| P1 IR (2018-11~2021-05) | +1.287 | +0.769 | +0.844 |
+| P2 IR (2021-05~2023-10) | **−0.497** | **+1.160** | +0.783 |
+| P3 IR (2023-10~) | +0.390 (trim) | **+1.669** | +2.041 |
+| rolling_ir_pos_frac | n/a | **0.816** | 0.818 |
+| SPA p-value | n/a | **0.000** | 0.000 |
+| 유니버스 | 65 | 65 | 65 |
+
+> **해석**: legacy(3) IR 1.30 → 동일 cutoff-trimmed 윈도우 IR=0.80 → embargo 추가 시 0.39
+> ⇒ 누수 프리미엄 ΔIR=−0.41 였음. 이 누수를 제거하면 P2가 양수→음수로 뒤집힌다.
+> production deploy(2) 는 same lean panel 을 cutoff OFF 환경 (legacy 동일) 에서 돌린 것 →
+> headline IR=1.30 은 legacy 와 거의 동일하지만, P1 weak / P2 strong 으로 regime mix 가
+> 건강해졌고 (P2 +1.16 vs legacy +0.78), turnover 도 −3.3pp 개선됐다.
+> 자세한 lineage 는 `docs/BASELINE.md` 참조.
 
 ### Selection Bias 검증 — baseline_v5 (recount, 2026-05-19 v2 — CANONICAL)
 
@@ -430,26 +431,26 @@ python run_selection_bias.py --auto --label baseline_v5
 2. 더 긴 OOS 보유로 SR 안정성 입증
 3. 신호/포트폴리오 개선으로 SR 상향 (현재 1.30 → 목표 ~1.65 = 1.96-σ)
 
-**재산출 명령:**
+**재산출 명령 (legacy 환경 audit 재현용):**
 ```bash
 python run_selection_bias.py --auto --label iter15_65tkr_reb21_vtg
-# 또는 explicit pkl path:
-python run_selection_bias.py --auto --pkl outputs/iter15_65tkr_reb21_vtg/backtest_result.pkl
+# 또는 explicit pkl path (현재 archive 디렉터리):
+python run_selection_bias.py --auto --pkl outputs/baseline_v4_legacy/backtest_result.pkl
 ```
-fallback chain: top-level `outputs/backtest_result.pkl` → `iter15_65tkr_reb21_vtg/` → `baseline_v4/`.
+fallback chain: top-level `outputs/backtest_result.pkl` → `baseline_v4/` (= current deploy alias).
 
-### 검증 체크리스트 (research baseline = iter15_FINAL_postfix 기준, 2026-05-19)
+### 검증 체크리스트 (research gate denominator = iter15_FINAL_postfix, production deploy = baseline_v5_deploy, 2026-05-19 v2)
 1. ✅ **Look-ahead bias 없음** — backtest.py 실행 타이밍 + walk-forward embargo (data-leakage-fix Task A)
-2. ❌ **Selection bias gate** — legacy 환경 DSR FAIL 결과는 STALE. 새 baseline IR=0.392 기준 재측정은 Task C step 2 (rolling-IR + SPA) 도입 후
+2. ⚠️ **Selection bias gate** — baseline_v5 recount (N=10) DSR p=0.0708 WARN / Adjusted SR 0.524 PASS / Haircut clear PASS. legacy 환경 DSR FAIL 결과는 STALE (위 STALE 박스 참조)
 3. ✅ **Score↔Position 일치** — 모든 OW는 z>0 종목 (score-gate 강제, `enforce_score_gated_ow=True`)
 4. ✅ **Core-Satellite 구조** — satellite_budget 0.225 → ~78% 코어 + ~22% 새틀라이트
-5. ✅ **TE 안정** — 2.88% (research) / 3.26% (legacy deploy)
-6. ⚠️ **Raw revision 노이즈 제거** — `clean_revision_spikes(mode="reversion_gated")` (Task B에서 ablation 예정 — `down_only` 대안 비교)
+5. ✅ **TE 안정** — 2.88% (research) / 3.16% (production deploy)
+6. ✅ **Raw revision 노이즈 제거** — `clean_revision_spikes(mode="reversion_gated")`. Task B ablation 결과 down_only 대안 CI [-0.161, +0.737] (parsimony DROP) — 현재 default 유지
 7. ✅ **금융주 유니버스 복원** — JPM/GS essential-sheet 교집합 (REDESIGN I)
-8. ✅ **Turnover 제어** — research 90.8% two-way / legacy deploy 109.5%
-9. ❌ **Long-Only IR ≥ 1.0** — research baseline IR=0.392 (목표 미달; legacy 1.31은 누수 프리미엄 +0.41 포함). Task B/C 후 재평가
-10. ⚠️ **Sub-period IR — diagnostic only (2026-05-19)** — research P1=+1.29 / P2=−0.50 / P3=+0.39 (cutoff). Sub-period IRs are NO LONGER promotion gates per Task C step 3; primary gate is rolling IR + SPA p-value (docs/BASELINE.md). Sub-period 수치는 regime inspection용으로만 유지
-11. ⚠️ **Value-trap gate** — `value_trap_gate_enabled=True` 유지. Task B ablation 결과 ΔIR=-0.046 CI=[-0.316, +0.186] (no gate evidence)
+8. ✅ **Turnover 제어** — research 90.8% two-way / production deploy 110.3% (gate ceiling 118.6%)
+9. ✅ **Long-Only IR ≥ 1.0 (production)** — production deploy IR=1.298 ✅ / research baseline IR=0.392 (gate denominator 용도; promotion 비교만)
+10. ⚠️ **Sub-period IR — diagnostic only (2026-05-19)** — production P1=+0.77 / P2=+1.16 / P3=+1.67. Sub-period IRs are NO LONGER promotion gates per Task C step 3; primary gate is rolling IR + SPA p-value (docs/BASELINE.md). Sub-period 수치는 regime inspection용으로만 유지
+11. ⚠️ **Value-trap gate** — `value_trap_gate_enabled=True` 유지하되 `vtg_scale=0.0`이라 실효 비활성. Task B ablation 결과 ΔIR=-0.046 CI=[-0.316, +0.186] (no gate evidence) → scale 0 으로 풀어두고 enable flag 만 호환성 위해 켜둠
 12. ✅ **Walk-forward embargo** — `embargo_days=20` (= forward_horizon). train_end ~ val_start, val_end ~ predict 사이 20일 갭. data-leakage-fix Task A step 0
 13. ✅ **OOS hold-out 자동 강제** — research/oos_verify/deploy/production(deprecated) 모드. cutoff=2024-12-31. peek 카운터 `experiment_inventory.json.n_oos_peeks`로 회계. Task A step 1
 14. ✅ **Single-statistic primary gate (rolling IR + SPA)** — `src/analytics.rolling_ir_stats`, `spa_pvalue` (Hansen 2005 simplified). `compute_metrics`에 7개 신규 키. 다중-목표 fitting 방지. selection-bias-discipline Task C step 2

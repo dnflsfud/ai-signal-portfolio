@@ -6,6 +6,12 @@
 > **Artifacts**: `outputs/iter15_FINAL_postfix/`
 > **Manifest**: `variants/iter15_FINAL_postfix.yaml` (`tuning_mode: research`)
 > **Environment**: `embargo_days=20` (= `forward_horizon`), `train_cutoff_date=2024-12-31`
+> **Role**: conservative anchor used **only** as the gate denominator for new
+>   variant promotion (Gates 1–5 below). NOT the artefact `update_and_deploy.bat`
+>   ships — that is `baseline_v5_deploy` (see § "deploy vs research separation"
+>   below and `outputs/baseline_v4/README.md`). baseline_v5 / baseline_v5_deploy
+>   add the single `feature_mode=lean` knob on top of this anchor; the anchor is
+>   kept frozen so promotion deltas remain comparable across rounds.
 >
 > ### Why rotated
 >
