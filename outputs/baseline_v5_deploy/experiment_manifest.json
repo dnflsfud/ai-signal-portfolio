@@ -110,12 +110,12 @@
     "vtg_scale": 0.0
   },
   "extra": {
-    "description": "Production deploy version of baseline_v5. Same overrides as variants/baseline_v5.yaml but tuning_mode: deploy (cutoff OFF, no OOS peek consumed). Used by update_and_deploy.bat after final-v1-promotion phase (2026-05-19 v2). Replaces variants/iter15_65tkr_reb21_vtg.yaml in the production daily flow.\nKey difference vs baseline_v5.yaml: tuning_mode is `deploy` here, meaning src/config.py auto-disables enforce_oos_holdout and train_cutoff_date so the strategy runs through the latest available date. Everything else identical.\nLineage: iter15_FINAL_postfix (research) -> baseline_v5 (oos_verify, IR trim 0.898, all 5 primary gates PASS) -> baseline_v5_deploy (this file, full-window deploy).\n",
+    "description": "Production deploy version of baseline_v5. Same overrides as variants/baseline_v5.yaml but tuning_mode: deploy (cutoff OFF, no OOS peek consumed). Used by update_and_deploy.bat after final-v1-promotion phase (2026-05-19 v2). Replaces variants/iter15_65tkr_reb21_vtg.yaml in the production daily flow.\nKey difference vs baseline_v5.yaml: tuning_mode is `deploy` here, meaning src/config.py auto-disables enforce_oos_holdout and train_cutoff_date so the strategy runs through the latest available date. Everything else identical.\nLineage: iter15_FINAL_postfix (research) -> baseline_v5 (oos_verify, IR trim 0.898, all 5 primary gates PASS) -> baseline_v5_deploy (this file, full-window deploy).\n | audit-fix re-sim (Phase 5-6 only: MVO-1 + DYNEXEC-1 + SIM-01 + BM-A-001) on cached predictions, commit b612d75, 2026-06-05. IR 1.298->1.408, turnover 110.3%->102.4%. Window=2018-11->2026-05-15.",
     "manifest_path": "variants\\baseline_v5_deploy.yaml",
     "tuning_mode": "deploy",
     "variant_label": "baseline_v5_deploy"
   },
   "git_dirty": true,
-  "git_hash": "73b051f20b0c683cb2f7edb9270399a776178e9e",
-  "timestamp_utc": "2026-05-21T01:34:28Z"
+  "git_hash": "b612d7507e506846990533f8fd6c6add6e37f518",
+  "timestamp_utc": "2026-06-05T12:59:43Z"
 }

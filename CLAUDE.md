@@ -353,26 +353,28 @@ python scripts/build_dashboard_data.py --run outputs/baseline_v4 --data data/ai_
 |---|---:|---:|---:|
 | 매니페스트 | `iter15_FINAL_postfix.yaml` | `baseline_v5_deploy.yaml` | `iter15_65tkr_reb21_vtg.yaml` |
 | 윈도우 | 2018-11 → 2024-12 (trimmed) | 2018-11 → 2026-05 (full) | 2018-11 → 2026-05 (full, leaky) |
-| Annual Return | 24.58% | **30.12%** | 29.96% |
-| Active Return / yr | +1.26% | **+4.11%** | +4.10% |
-| Tracking Error | 2.88% | **3.16%** | 3.14% |
-| Sharpe | 1.094 | **1.371** | 1.332 |
-| **Information Ratio** | **0.392** | **1.298** | 1.304 |
-| Max Drawdown | −29.95% | −29.24% | −30.34% |
-| Annual Turnover 2-way | 90.8% | **110.3%** | 113.6% |
+| Annual Return | 24.58% | **30.17%** | 29.96% |
+| Active Return / yr | +1.26% | **+4.40%** | +4.10% |
+| Tracking Error | 2.88% | **3.12%** | 3.14% |
+| Sharpe | 1.094 | **1.367** | 1.332 |
+| **Information Ratio** | **0.392** | **1.408** | 1.304 |
+| Max Drawdown | −29.95% | −29.34% | −30.34% |
+| Annual Turnover 2-way | 90.8% | **102.4%** | 113.6% |
 | Avg IC | 0.0463 | **0.0478** | 0.0450 |
-| P1 IR (2018-11~2021-05) | +1.287 | +0.769 | +0.844 |
-| P2 IR (2021-05~2023-10) | **−0.497** | **+1.160** | +0.783 |
-| P3 IR (2023-10~) | +0.390 (trim) | **+1.669** | +2.041 |
-| rolling_ir_pos_frac | n/a | **0.816** | 0.818 |
+| P1 IR (2018-11~2021-05) | +1.287 | +0.667 | +0.844 |
+| P2 IR (2021-05~2023-10) | **−0.497** | **+1.515** | +0.783 |
+| P3 IR (2023-10~) | +0.390 (trim) | **+1.740** | +2.041 |
+| rolling_ir_pos_frac | n/a | **0.801** | 0.818 |
 | SPA p-value | n/a | **0.000** | 0.000 |
 | 유니버스 | 65 | 65 | 65 |
 
 > **해석**: legacy(3) IR 1.30 → 동일 cutoff-trimmed 윈도우 IR=0.80 → embargo 추가 시 0.39
 > ⇒ 누수 프리미엄 ΔIR=−0.41 였음. 이 누수를 제거하면 P2가 양수→음수로 뒤집힌다.
 > production deploy(2) 는 same lean panel 을 cutoff OFF 환경 (legacy 동일) 에서 돌린 것 →
-> headline IR=1.30 은 legacy 와 거의 동일하지만, P1 weak / P2 strong 으로 regime mix 가
-> 건강해졌고 (P2 +1.16 vs legacy +0.78), turnover 도 −3.3pp 개선됐다.
+> headline IR=1.41 (audit-fix re-sim, 2026-06-05) 로 legacy(1.30)를 상회하며, P1 weak / P2 strong 으로 regime mix 가
+> 건강해졌고 (P2 +1.52 vs legacy +0.78), turnover 도 legacy 대비 −11.2pp 개선됐다.
+> production deploy(2) 수치는 audit 수정(MVO-1 constraint-preserving fallback + DYNEXEC-1 sharpness 복원,
+> commit `b612d75`)을 캐시된 Phase 1-4 예측 위에 Phase 5-6 재시뮬레이션한 결과 (window = 2018-11→2026-05-15).
 > 자세한 lineage 는 `docs/BASELINE.md` 참조.
 
 ### Selection Bias 검증 — baseline_v5 (recount, 2026-05-19 v2 — CANONICAL)
@@ -444,12 +446,12 @@ fallback chain: top-level `outputs/backtest_result.pkl` → `baseline_v4/` (= cu
 2. ⚠️ **Selection bias gate** — baseline_v5 recount (N=10) DSR p=0.0708 WARN / Adjusted SR 0.524 PASS / Haircut clear PASS. legacy 환경 DSR FAIL 결과는 STALE (위 STALE 박스 참조)
 3. ✅ **Score↔Position 일치** — 모든 OW는 z>0 종목 (score-gate 강제, `enforce_score_gated_ow=True`)
 4. ✅ **Core-Satellite 구조** — satellite_budget 0.225 → ~78% 코어 + ~22% 새틀라이트
-5. ✅ **TE 안정** — 2.88% (research) / 3.16% (production deploy)
+5. ✅ **TE 안정** — 2.88% (research) / 3.12% (production deploy)
 6. ✅ **Raw revision 노이즈 제거** — `clean_revision_spikes(mode="reversion_gated")`. Task B ablation 결과 down_only 대안 CI [-0.161, +0.737] (parsimony DROP) — 현재 default 유지
 7. ✅ **금융주 유니버스 복원** — JPM/GS essential-sheet 교집합 (REDESIGN I)
-8. ✅ **Turnover 제어** — research 90.8% two-way / production deploy 110.3% (gate ceiling 118.6%)
-9. ✅ **Long-Only IR ≥ 1.0 (production)** — production deploy IR=1.298 ✅ / research baseline IR=0.392 (gate denominator 용도; promotion 비교만)
-10. ⚠️ **Sub-period IR — diagnostic only (2026-05-19)** — production P1=+0.77 / P2=+1.16 / P3=+1.67. Sub-period IRs are NO LONGER promotion gates per Task C step 3; primary gate is rolling IR + SPA p-value (docs/BASELINE.md). Sub-period 수치는 regime inspection용으로만 유지
+8. ✅ **Turnover 제어** — research 90.8% two-way / production deploy 102.4% (gate ceiling 118.6%)
+9. ✅ **Long-Only IR ≥ 1.0 (production)** — production deploy IR=1.408 ✅ / research baseline IR=0.392 (gate denominator 용도; promotion 비교만)
+10. ⚠️ **Sub-period IR — diagnostic only (2026-05-19)** — production P1=+0.67 / P2=+1.52 / P3=+1.74. Sub-period IRs are NO LONGER promotion gates per Task C step 3; primary gate is rolling IR + SPA p-value (docs/BASELINE.md). Sub-period 수치는 regime inspection용으로만 유지
 11. ⚠️ **Value-trap gate** — `value_trap_gate_enabled=True` 유지하되 `vtg_scale=0.0`이라 실효 비활성. Task B ablation 결과 ΔIR=-0.046 CI=[-0.316, +0.186] (no gate evidence) → scale 0 으로 풀어두고 enable flag 만 호환성 위해 켜둠
 12. ✅ **Walk-forward embargo** — `embargo_days=20` (= forward_horizon). train_end ~ val_start, val_end ~ predict 사이 20일 갭. data-leakage-fix Task A step 0
 13. ✅ **OOS hold-out 자동 강제** — research/oos_verify/deploy/production(deprecated) 모드. cutoff=2024-12-31. peek 카운터 `experiment_inventory.json.n_oos_peeks`로 회계. Task A step 1
