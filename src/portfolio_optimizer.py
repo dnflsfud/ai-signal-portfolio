@@ -124,7 +124,6 @@ def estimate_covariance(
 def build_sector_constraints(
     tickers: List[str],
     sector_map: Dict[str, str],
-    bm_weights: np.ndarray,
 ) -> Dict[str, List[int]]:
     """Return sector -> position-index mapping."""
     sector_groups: Dict[str, List[int]] = {}
@@ -268,7 +267,6 @@ def _build_mvo_constraints(
     turnover = cp.norm1(w - prev_weights)
 
     max_daily_te_var = max_te_annual ** 2 / 252.0
-    bottom_indices: set = set()
     single_turnover_limit = config.max_single_turnover
 
     # Per-name max_weight (default uniform).
@@ -295,7 +293,7 @@ def _build_mvo_constraints(
 
         mega_indices = [
             i for i in range(n)
-            if i not in bottom_indices and bm_weights[i] >= mega_bm_thr
+            if bm_weights[i] >= mega_bm_thr
         ]
 
         if funding_mode and funding_k > 0 and mega_indices:
@@ -345,7 +343,7 @@ def _build_mvo_constraints(
 
     sec_dev = sector_deviation
     if sector_map is not None:
-        sector_groups = build_sector_constraints(tickers, sector_map, bm_weights)
+        sector_groups = build_sector_constraints(tickers, sector_map)
         for indices in sector_groups.values():
             if not indices:
                 continue
@@ -450,16 +448,79 @@ def project_portfolio_weights(
         if diag is not None:
             diag["used_fallback"] = True
             diag["fallback_reason"] = diag.get("fallback_reason") or prob.status or "projection_failed"
-        return fallback
+        return _safe_step_toward_benchmark(prev_weights, fallback, config, diag)
 
     projected = np.asarray(w.value, dtype=float).flatten()
     if not np.all(np.isfinite(projected)):
         if diag is not None:
             diag["used_fallback"] = True
             diag["fallback_reason"] = "non_finite_projection"
-        return fallback
+        return _safe_step_toward_benchmark(prev_weights, fallback, config, diag)
 
     return projected
+
+
+def _safe_step_toward_benchmark(
+    prev_weights: np.ndarray,
+    target_weights: np.ndarray,
+    config: PipelineConfig,
+    diagnostics: Optional[Dict[str, Any]] = None,
+) -> np.ndarray:
+    """Largest feasible step from ``prev_weights`` toward ``target_weights``
+    under the ESSENTIAL hard caps only (MVO-1 fix).
+
+    The old optimiser/projection fallback returned ``bm_weights`` verbatim on
+    infeasibility, which can BREACH ``max_single_turnover`` (norm1(bm - prev)
+    may exceed the cap) and ``max_weight``, and reverts the whole book to
+    passive (zero active alpha). Instead we solve::
+
+        minimise ||w - target||^2
+        s.t.  sum(w)=1,  w>=0,  w<=max_weight,
+              norm1(w - prev) <= max_single_turnover
+
+    ``prev_weights`` itself satisfies this set (norm1(0)=0), so it is always
+    feasible and the recorded turnover / max_weight caps can never be violated
+    by the fallback. If even this degenerate solve fails (e.g. ``prev`` already
+    breaches max_weight after drift), hold ``prev``.
+    """
+    prev = np.asarray(prev_weights, dtype=float).flatten()
+    target = np.asarray(target_weights, dtype=float).flatten()
+    n = len(prev)
+    w = cp.Variable(n)
+    prob = cp.Problem(
+        cp.Minimize(cp.sum_squares(w - target)),
+        [
+            cp.sum(w) == 1,
+            w >= 0,
+            w <= config.max_weight,
+            cp.norm1(w - prev) <= config.max_single_turnover,
+        ],
+    )
+    if (_solve_problem(prob)
+            and prob.status in ("optimal", "optimal_inaccurate")
+            and w.value is not None):
+        out = np.asarray(w.value, dtype=float).flatten()
+        if np.all(np.isfinite(out)):
+            out = np.clip(out, 0.0, None)
+            s = out.sum()
+            if s > 0:
+                out = out / s
+            # Enforce the turnover cap exactly. ECOS satisfies the constraint
+            # only to solver tolerance (~1e-5) and the clip+renorm above can
+            # nudge it a hair over; scale the step back toward prev so
+            # norm1(out - prev) <= cap holds to float precision. A convex move
+            # toward prev preserves sum=1, w>=0 and w<=max_weight.
+            cap = config.max_single_turnover
+            step = out - prev
+            to = float(np.abs(step).sum())
+            if to > cap and to > 0:
+                out = prev + (cap / to) * step
+            if diagnostics is not None:
+                diagnostics["fallback_book"] = "safe_step"
+            return out
+    if diagnostics is not None:
+        diagnostics["fallback_book"] = "hold_prev"
+    return prev.copy()
 
 
 def optimize_portfolio(
@@ -525,7 +586,7 @@ def optimize_portfolio(
     if not _solve_problem(prob, diag):
         if diag is not None:
             diag["used_fallback"] = True
-        return bm_weights.copy()
+        return _safe_step_toward_benchmark(prev_weights, bm_weights, config, diag)
 
     if prob.status in ("optimal", "optimal_inaccurate") and w.value is not None:
         opt_w = np.asarray(w.value, dtype=float).flatten()
@@ -533,10 +594,10 @@ def optimize_portfolio(
             if diag is not None:
                 diag["used_fallback"] = True
                 diag["fallback_reason"] = "non_finite_solution"
-            return bm_weights.copy()
+            return _safe_step_toward_benchmark(prev_weights, bm_weights, config, diag)
         return opt_w
 
     if diag is not None:
         diag["used_fallback"] = True
         diag["fallback_reason"] = prob.status or "non_optimal_status"
-    return bm_weights.copy()
+    return _safe_step_toward_benchmark(prev_weights, bm_weights, config, diag)

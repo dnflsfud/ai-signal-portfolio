@@ -535,9 +535,21 @@ def incremental_update(data: UniverseData) -> DailyState:
                     if not validate_new_weights(new_weights, tickers):
                         print(f"  [{t_date.strftime('%Y-%m-%d')}] 비중 검증 실패 → 이전 비중 유지")
                     else:
-                        turnover = float(np.abs(new_weights - prev_weights).sum())
+                        delta_w = np.abs(new_weights - prev_weights)
+                        turnover = float(delta_w.sum())
                         # --- Step 4: TC charged to today's PnL ----------------
-                        tc_cost = turnover * ONE_WAY_TC
+                        # SIM-02 (audit 2026-06): mirror the backtest's per-ticker
+                        # FX surcharge (KRX names) so live TC matches the backtest
+                        # instead of understating it. Falls back to the scalar
+                        # product when the surcharge dict is empty.
+                        fx_surcharge = getattr(DEFAULT_CONFIG, "fx_surcharge_per_ticker", {}) or {}
+                        if fx_surcharge:
+                            fx_vec = np.array(
+                                [fx_surcharge.get(t, 0.0) for t in tickers], dtype=float
+                            )
+                            tc_cost = float(np.sum(delta_w * (ONE_WAY_TC + fx_vec)))
+                        else:
+                            tc_cost = turnover * ONE_WAY_TC
                         port_ret -= tc_cost
                         state.turnovers.append((t_date, turnover))
                         state.rebal_weights[t_date] = pd.Series(new_weights, index=tickers)

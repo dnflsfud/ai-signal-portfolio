@@ -1,9 +1,9 @@
 """
 Phase 5: Walk-Forward 백테스트
-- train_window: 756일(3년)
+- train_window: 1260일(5년)
 - retrain_freq: 63일(3개월)
 - prediction_horizon: 20일
-- rebalance_freq: 5일(주간)
+- rebalance_freq: 21일(월간)
 """
 
 import datetime
@@ -26,7 +26,7 @@ from src.config import PipelineConfig, DEFAULT_CONFIG
 from src.data_loader import UniverseData, TICKERS
 from src.feature_engine import build_all_features
 from src.target_engine import build_targets
-from src.model_trainer import walk_forward_train, TRAIN_WINDOW
+from src.model_trainer import walk_forward_train
 from src.portfolio_optimizer import (
     estimate_covariance,
     optimize_portfolio,
@@ -34,8 +34,7 @@ from src.portfolio_optimizer import (
     project_capped_weights,
     project_portfolio_weights,
 )
-from src.utils import annualise_return, compute_performance_metrics
-from src.features.utils import cross_sectional_zscore, cs_rank
+from src.utils import compute_performance_metrics
 
 
 def apply_value_trap_gate(
@@ -107,7 +106,11 @@ def apply_growth_tilt(
 
     Post-prediction boost that tilts the OW book toward stocks with:
       1. Strong EPS/Sales revision momentum (forward-looking sell-side signal)
-      2. Strong fundamental EPS/Sales growth (backward-looking realized growth)
+      2. Strong 252d trajectory of the FORWARD consensus EPS/Sales estimate
+         (OVL-3, audit 2026-06: this is the change in the BEST_EPS/BEST_SALES
+         consensus *estimate* level, not a realized-fundamentals growth rate —
+         both legs are consensus-derived and therefore correlated, not
+         orthogonal factors)
 
     Mechanism:
       rev_composite   = cs_rank(eps_rev_ma_63d) * 0.5 + cs_rank(sales_rev_ma_63d) * 0.5
@@ -211,7 +214,9 @@ def apply_growth_tilt(
     else:
         rev_composite = pd.DataFrame(0.5, index=pred_idx, columns=pred_cols)
 
-    # --- Fundamental growth composite (backward-looking) ---
+    # --- Estimate-trajectory composite (252d change in forward consensus) ---
+    # OVL-3: BEST_EPS / BEST_SALES are forward consensus estimates, so this is
+    # the trajectory of the estimate level, NOT realized fundamental growth.
     fund_eps_part = None
     fund_sales_part = None
     if eps_raw is not None:
@@ -305,7 +310,8 @@ def apply_pead_boost(
     Workaround: post-process boost that injects PEAD signal AFTER model
     prediction, leaving the panel untouched. Per (date, ticker):
 
-        days_since = trading days since last earnings announcement
+        days_since = CALENDAR days since last earnings announcement
+                     (decay_days / max_days are calibrated against calendar days)
         decay      = exp(−days_since / decay_days)  for days_since ≤ max_days
         rev_quality = clip(eps_rev_ma_63d / 100, 0, 1)    # Phase 2.4 cleaned, 63d (stable overlay)
         pead_signal = decay × rev_quality   ∈ [0, 1]
@@ -342,7 +348,10 @@ def apply_pead_boost(
         .astype(int)
     )
 
-    # Vectorized days_since per ticker via searchsorted on event dates
+    # Vectorized days_since per ticker via searchsorted on event dates.
+    # NOTE: this is a CALENDAR-day delta (timedelta64[D]); decay_days/max_days
+    # are tuned against calendar days (OVL-1, audit 2026-06). Switching to a
+    # trading-day grid would require re-tuning those hyperparameters.
     dates_ts = pred_idx.values.astype("datetime64[ns]")
     days_since = pd.DataFrame(np.nan, index=pred_idx, columns=pred_cols)
     for col in pred_cols:
@@ -606,6 +615,9 @@ class BacktestResult:
         self.optimizer_failures: int = 0
         self.optimizer_rebalances: int = 0
         self.optimizer_failure_rate: float = 0.0
+        # SIM-01 (audit 2026-06): projection-step fallbacks, counted separately
+        # from the target-optimiser fallbacks above (different failure mode).
+        self.projection_failures: int = 0
         # Benchmark label used by summary() output. Set by run_backtest from
         # config.benchmark_type so the printed summary matches the actual BM
         # used in calculations. Default reflects production setting.
@@ -776,10 +788,6 @@ def get_sector_map(data: UniverseData) -> Dict[str, str]:
     return sector_map
 
 
-# Backwards-compatible alias (deprecated -- use get_sector_map instead)
-_get_sector_map = get_sector_map
-
-
 # ---------------------------------------------------------------------------
 # Benchmark weight helpers  — REDESIGN A (2026-04)
 # ---------------------------------------------------------------------------
@@ -825,10 +833,14 @@ def make_capweight_bm_fn(data: UniverseData, tickers: list):
                 return uniform.copy()
             row = mc_aligned.loc[asof[-1]].values.astype(float)
 
-        # Replace NaN / non-positive with ticker's historical median
+        # Replace NaN / non-positive with ticker's AS-OF median (rows up to
+        # t_date only). BM-A-001 (audit 2026-06): the prior full-history
+        # median(axis=0) pulled future market-cap rows into a past benchmark
+        # weight — a latent look-ahead leak. Dormant on production data (this
+        # branch fires 0 times) but made point-in-time defensively.
         nan_mask = ~np.isfinite(row) | (row <= 0)
         if nan_mask.any():
-            medians = mc_aligned.median(axis=0).values
+            medians = mc_aligned.loc[:t_date].median(axis=0).values
             row[nan_mask] = medians[nan_mask]
         # If still NaN (no history at all), fall back to uniform
         row = np.where(np.isfinite(row) & (row > 0), row, 0.0)
@@ -890,6 +902,14 @@ def compute_signal_confidence(
     """Convert signal sharpness + recent realized IC into a 0-1 confidence.
 
     Ported from codex_v2 redesign_pipeline._compute_signal_confidence.
+
+    DYNEXEC-1 fix (audit 2026-06): predictions here are cross-sectional
+    z-scores, so the decile-spread (top_mean - bot_mean) sits ~2-4. The old
+    ``raw_spread / 0.20`` normaliser assumed return units and therefore clipped
+    to 1.0 for every realistic input — making the sharpness factor inert
+    (confidence == ic_score). It is now normalised on the z-score scale so the
+    term actually varies across [0.20, 1.00]: a spread of 1.5 maps to the floor
+    and 4.0 to the ceiling.
     """
     pred_valid = pred_row.dropna()
     if len(pred_valid) < 5:
@@ -902,7 +922,9 @@ def compute_signal_confidence(
     bot_mean = float(raw_valid.sort_values().head(tail_n).mean())
     raw_spread = top_mean - bot_mean
 
-    spread_score = float(np.clip(raw_spread / 0.20, 0.20, 1.00))
+    # z-score-scaled: spread 1.5 -> floor, 4.0 -> ceiling (was raw_spread/0.20,
+    # which saturated at 1.0 for all z-score inputs).
+    spread_score = float(np.clip((raw_spread - 1.5) / (4.0 - 1.5), 0.20, 1.00))
     ic_score = float(np.clip((trailing_ic_mean + 0.01) / 0.04, 0.20, 1.00))
     return float(np.clip(spread_score * ic_score, 0.10, 1.00))
 
@@ -1014,10 +1036,8 @@ def simulate_portfolio(
 ) -> BacktestResult:
     """Reusable portfolio simulation loop.
 
-    This function encapsulates the inner backtest loop that was previously
-    duplicated across run_backtest, grid_search.run_optimization_only,
-    test_monthly_rebal.run_monthly_backtest, and
-    test_te_sensitivity.run_backtest_with_te.
+    This function encapsulates the inner walk-forward rebalancing loop used
+    by run_backtest.
 
     Args:
         predictions: DataFrame of model predictions (date x ticker).
@@ -1096,6 +1116,7 @@ def simulate_portfolio(
     weight_history = {}
     weight_history_daily = {}
     optimizer_failures = 0
+    projection_failures = 0
 
     # Find valid prediction start
     pred_valid = predictions.dropna(how="all")
@@ -1234,12 +1255,17 @@ def simulate_portfolio(
                     prev_weights, target_weights, confidence, config,
                 )
 
+                # SIM-01 (audit 2026-06): capture projection diagnostics so a
+                # silent projection fallback (smoothing dropped for this rebal)
+                # is counted, distinct from the target-optimiser fallback.
+                proj_diag: Dict = {}
                 if getattr(config, "use_score_based", False):
                     new_weights = project_capped_weights(
                         candidate_weights=candidate_weights,
                         max_weight=config.max_weight,
                         fallback_weights=target_weights,
                         config=config,
+                        diagnostics=proj_diag,
                     )
                 else:
                     cov_matrix = optimizer_diagnostics.get("cov_matrix")
@@ -1266,7 +1292,10 @@ def simulate_portfolio(
                         ),
                         config=config,
                         fallback_weights=target_weights,
+                        diagnostics=proj_diag,
                     )
+                if proj_diag.get("used_fallback", False):
+                    projection_failures += 1
 
                 # Two-way L1 turnover: sum(|new - old|).
                 # NOTE: industry one-way convention = 0.5 * L1 (halve this).
@@ -1274,6 +1303,20 @@ def simulate_portfolio(
                 turnover = delta_w.sum()
                 turnovers.append((t_date, turnover))
                 weight_history[t_date] = pd.Series(new_weights, index=tickers)
+
+                # MVO-1 (audit 2026-06): surface optimiser-fallback rebalances
+                # with the realised turnover + active L1, so silent benchmark-
+                # reversion months are visible in QA instead of only bumping an
+                # aggregate counter. The constraint-preserving fallback keeps
+                # turnover within max_single_turnover.
+                if optimizer_diagnostics.get("used_fallback", False):
+                    logger.warning(
+                        "[simulate] optimiser fallback at %s: realised turnover=%.4f "
+                        "(cap=%.4f), active_L1=%.4f, book=%s",
+                        t_date.date(), float(turnover), config.max_single_turnover,
+                        float(np.abs(new_weights - bm_w).sum()),
+                        optimizer_diagnostics.get("fallback_book", "unknown"),
+                    )
 
                 # Step 4: TC charged to today's PnL (paid at close_t).
                 # fx-cost-modeling step 1: per-ticker TC = scalar one_way_tc
@@ -1356,10 +1399,13 @@ def simulate_portfolio(
     result.optimizer_failure_rate = (
         optimizer_failures / total_rebals if total_rebals > 0 else 0.0
     )
+    result.projection_failures = projection_failures  # SIM-01
     if total_rebals > 0:
         fail_rate = optimizer_failures / total_rebals
         print(f"[simulate_portfolio] Optimizer fallback: "
-              f"{optimizer_failures}/{total_rebals} ({fail_rate:.1%})")
+              f"{optimizer_failures}/{total_rebals} ({fail_rate:.1%}); "
+              f"projection fallback: {projection_failures}/{total_rebals} "
+              f"({projection_failures / total_rebals:.1%})")
 
     return result
 
@@ -1614,14 +1660,16 @@ def validate_backtest(result: BacktestResult, thresholds: dict = None) -> dict:
     total_rebals = getattr(result, "optimizer_rebalances", len(result.portfolio_weights))
     fail_count = getattr(result, "optimizer_failures", None)
     if fail_count is None:
-        if total_rebals > 0:
-            fail_count = sum(
-                1 for w in result.portfolio_weights.values()
-                if abs(w.std() - 0) < 1e-6
-            )
-            fail_rate = fail_count / total_rebals
-        else:
-            fail_rate = 0
+        # BR-2 (audit 2026-06): legacy pkls without the optimizer_failures
+        # attribute. The old std~0 heuristic only flags EW-benchmark fallbacks
+        # (a cap-weighted bm fallback has non-zero dispersion), so it silently
+        # under-counts. Fresh runs always set the attribute; treat missing as
+        # "unknown" and skip the check rather than report a misleading 0%.
+        logger.warning(
+            "validate_backtest: result has no optimizer_failures attribute "
+            "(legacy pkl) — skipping optimizer fail-rate check."
+        )
+        fail_rate = 0.0
     else:
         fail_rate = fail_count / total_rebals if total_rebals > 0 else 0
     opt_pass = fail_rate <= thresholds["max_optimizer_fail_rate"]

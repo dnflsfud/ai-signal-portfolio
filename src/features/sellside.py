@@ -82,8 +82,6 @@ def clean_revision_spikes(
 
     # -- Pattern 2: gradual pre-earnings drops (down-only, all modes) --------
     if earnings_timeline is not None:
-        common_cols = [c for c in rev.columns if c in earnings_timeline.columns]
-        common_dates = rev.index.intersection(earnings_timeline.index)
         earn_aligned = earnings_timeline.reindex(
             index=rev.index, columns=rev.columns, fill_value=0
         )
